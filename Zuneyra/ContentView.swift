@@ -7,6 +7,7 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var section: LibrarySection = .albums
     @State private var query = ""
+    @FocusState private var searchFocused: Bool
     @State private var selectedAlbum: String?
     @State private var importing = false
     @State private var showingPlayer = false
@@ -67,72 +68,90 @@ struct ContentView: View {
 
     private var navigationContent: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    #if os(iOS)
-                    HStack {
-                        ForEach(LibrarySection.allCases) { item in
-                            Button { section = item; selectedAlbum = nil } label: { Label(item.rawValue, systemImage: item.icon).font(.caption).labelStyle(.titleOnly).padding(.vertical, 10).frame(maxWidth: .infinity).background(section == item ? Sunset.coral : Sunset.panel(scheme), in: Capsule()).foregroundStyle(section == item ? .white : .primary) }
-                        }
-                    }.buttonStyle(.plain)
-                    #endif
-                    if selectedAlbum != nil {
-                        Button { selectedAlbum = nil } label: { Label("所有专辑", systemImage: "chevron.left") }.buttonStyle(.plain)
+            VStack(spacing: 0) {
+                HStack(spacing: 10) {
+                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                    TextField("搜索你的音乐", text: $query)
+                        .textFieldStyle(.plain)
+                        .focused($searchFocused)
+                        .frame(maxWidth: .infinity)
+                        .accessibilityIdentifier("librarySearchField")
+                    if !query.isEmpty {
+                        Button { query = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+                            .buttonStyle(.plain).accessibilityLabel("清除搜索")
                     }
-                    VStack(alignment: .leading, spacing: 7) {
-                        Text("YOUR MUSIC, OFFLINE").font(.system(size: 10, weight: .semibold)).tracking(2).foregroundStyle(Sunset.coral)
-                        Text(selectedAlbum == nil ? section.rawValue : filtered.first?.album ?? "专辑").font(.system(size: 32, weight: .bold))
-                        Text("\(filtered.count) 首歌曲 · 全部离线可用").font(.subheadline).foregroundStyle(.secondary)
-                    }
-                    if store.isImporting {
-                        HStack {
-                            ProgressView().controlSize(.small)
-                            Text(store.importProgress).font(.subheadline)
-                            Spacer()
-                            Button("取消") { store.cancelImport() }
-                        }.padding().background(Sunset.panel(scheme), in: RoundedRectangle(cornerRadius: 12))
-                    }
-                    if store.isLoading { ProgressView("正在读取音乐库…").frame(maxWidth: .infinity).padding(60) }
-                    else if store.tracks.isEmpty {
-                        ContentUnavailableView {
-                            Label("把喜欢的音乐带进来", systemImage: "waveform")
-                        } description: { Text("导入你的音乐文件，收藏每一种节奏。\nFLAC · ALAC · MP3 · AAC · WAV · AIFF") } actions: {
-                            Button("导入音乐", systemImage: "plus") { importing = true }.buttonStyle(.borderedProminent).disabled(store.isImporting)
-                        }.padding(.vertical, 55)
+                }
+                .contentShape(Rectangle())
+                .onTapGesture { searchFocused = true }
+                .padding(12)
+                .background(Sunset.panel(scheme), in: RoundedRectangle(cornerRadius: 12))
+                .padding(.horizontal, 24).padding(.vertical, 12)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 24) {
                         #if os(iOS)
-                        Label("也可以连接 Mac，在 Finder → iPhone → 文件 → Zuneyra 中拖入音乐，传输完成后打开本应用。", systemImage: "cable.connector")
-                            .font(.footnote).foregroundStyle(.secondary)
+                        HStack {
+                            ForEach(LibrarySection.allCases) { item in
+                                Button { section = item; selectedAlbum = nil } label: { Label(item.rawValue, systemImage: item.icon).font(.caption).labelStyle(.titleOnly).padding(.vertical, 10).frame(maxWidth: .infinity).background(section == item ? Sunset.coral : Sunset.panel(scheme), in: Capsule()).foregroundStyle(section == item ? .white : .primary) }
+                            }
+                        }.buttonStyle(.plain)
                         #endif
-                    } else if filtered.isEmpty {
-                        ContentUnavailableView("这里还很安静", systemImage: "music.note", description: Text(query.isEmpty ? "收藏喜欢的歌曲，让它们出现在这里。" : "试试其他歌曲、专辑或艺术家名称。"))
-                    } else if section == .albums && selectedAlbum == nil && query.isEmpty {
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 145, maximum: 260), spacing: 22)], alignment: .leading, spacing: 25) {
-                            ForEach(albums, id: \.first!.albumKey) { album in
-                                Button { selectedAlbum = album[0].albumKey } label: {
-                                    VStack(alignment: .leading, spacing: 8) {
-                                        CoverArt(track: album[0], repository: store.repository)
-                                        Text(album[0].album).font(.headline).lineLimit(1)
-                                        Text(album[0].albumArtist).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                                    }.contentShape(Rectangle())
-                                }.buttonStyle(.plain).accessibilityLabel("专辑 \(album[0].album)")
-                            }
+                        if selectedAlbum != nil {
+                            Button { selectedAlbum = nil } label: { Label("所有专辑", systemImage: "chevron.left") }.buttonStyle(.plain)
                         }
-                    } else if section == .artists && selectedAlbum == nil && query.isEmpty {
-                        ForEach(Array(Set(filtered.map(\.artist))).sorted(), id: \.self) { artist in
-                            VStack(alignment: .leading, spacing: 12) {
-                                Text(artist).font(.title2.bold())
-                                songList(filtered.filter { $0.artist == artist })
-                            }
+                        VStack(alignment: .leading, spacing: 7) {
+                            Text("YOUR MUSIC, OFFLINE").font(.system(size: 10, weight: .semibold)).tracking(2).foregroundStyle(Sunset.coral)
+                            Text(selectedAlbum == nil ? section.rawValue : filtered.first?.album ?? "专辑").font(.system(size: 32, weight: .bold))
+                            Text("\(filtered.count) 首歌曲 · 全部离线可用").font(.subheadline).foregroundStyle(.secondary)
                         }
-                    } else {
-                        Button("播放全部", systemImage: "play.fill") { if let first = filtered.first { store.play(first, context: filtered) } }.buttonStyle(.borderedProminent)
-                        songList(filtered)
-                    }
-                }.padding(24).frame(maxWidth: 1150, alignment: .leading).frame(maxWidth: .infinity)
+                        if store.isImporting {
+                            HStack {
+                                ProgressView().controlSize(.small)
+                                Text(store.importProgress).font(.subheadline)
+                                Spacer()
+                                Button("取消") { store.cancelImport() }
+                            }.padding().background(Sunset.panel(scheme), in: RoundedRectangle(cornerRadius: 12))
+                        }
+                        if store.isLoading { ProgressView("正在读取音乐库…").frame(maxWidth: .infinity).padding(60) }
+                        else if store.tracks.isEmpty {
+                            ContentUnavailableView {
+                                Label("把喜欢的音乐带进来", systemImage: "waveform")
+                            } description: { Text("导入你的音乐文件，收藏每一种节奏。\nFLAC · ALAC · MP3 · AAC · WAV · AIFF") } actions: {
+                                Button("导入音乐", systemImage: "plus") { importing = true }.buttonStyle(.borderedProminent).disabled(store.isImporting)
+                            }.padding(.vertical, 55)
+                            #if os(iOS)
+                            Label("也可以连接 Mac，在 Finder → iPhone → 文件 → Zuneyra 中拖入音乐，传输完成后打开本应用。", systemImage: "cable.connector")
+                                .font(.footnote).foregroundStyle(.secondary)
+                            #endif
+                        } else if filtered.isEmpty {
+                            ContentUnavailableView("这里还很安静", systemImage: "music.note", description: Text(query.isEmpty ? "收藏喜欢的歌曲，让它们出现在这里。" : "试试其他歌曲、专辑或艺术家名称。"))
+                        } else if section == .albums && selectedAlbum == nil && query.isEmpty {
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 145, maximum: 260), spacing: 22)], alignment: .leading, spacing: 25) {
+                                ForEach(albums, id: \.first!.albumKey) { album in
+                                    Button { selectedAlbum = album[0].albumKey } label: {
+                                        VStack(alignment: .leading, spacing: 8) {
+                                            CoverArt(track: album[0], repository: store.repository)
+                                            Text(album[0].album).font(.headline).lineLimit(1)
+                                            Text(album[0].albumArtist).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                        }.contentShape(Rectangle())
+                                    }.buttonStyle(.plain).accessibilityLabel("专辑 \(album[0].album)")
+                                }
+                            }
+                        } else if section == .artists && selectedAlbum == nil && query.isEmpty {
+                            ForEach(Array(Set(filtered.map(\.artist))).sorted(), id: \.self) { artist in
+                                VStack(alignment: .leading, spacing: 12) {
+                                    Text(artist).font(.title2.bold())
+                                    songList(filtered.filter { $0.artist == artist })
+                                }
+                            }
+                        } else {
+                            Button("播放全部", systemImage: "play.fill") { if let first = filtered.first { store.play(first, context: filtered) } }.buttonStyle(.borderedProminent)
+                            songList(filtered)
+                        }
+                    }.padding(24).frame(maxWidth: 1150, alignment: .leading).frame(maxWidth: .infinity)
+                }
             }
             .background(Sunset.background(scheme))
             .navigationTitle("Zuneyra")
-            .searchable(text: $query, prompt: "搜索你的音乐")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     #if os(iOS)
@@ -165,6 +184,8 @@ struct ContentView: View {
                             Text(playbackTime(track.duration)).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                         }.contentShape(Rectangle())
                     }.buttonStyle(.plain)
+                        .accessibilityIdentifier("play-track-\(track.id)")
+                        .accessibilityLabel("播放 \(track.title)")
                     Button { store.toggleFavorite(track) } label: { Image(systemName: track.favorite ? "heart.fill" : "heart").foregroundStyle(Sunset.coral).frame(width: 38, height: 44) }.buttonStyle(.plain).accessibilityLabel(track.favorite ? "取消收藏 \(track.title)" : "收藏 \(track.title)")
                 }.padding(.vertical, 10)
                 Divider().opacity(0.5)

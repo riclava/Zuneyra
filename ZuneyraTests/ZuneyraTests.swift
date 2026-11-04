@@ -212,4 +212,47 @@ struct ZuneyraTests {
     }
     #endif
 
+    private func id3v1(title: Data, artist: Data, album: Data) -> Data {
+        var tag = Data("TAG".utf8)
+        for field in [title, artist, album] { tag.append(field.prefix(30)); tag.append(Data(repeating: 0, count: max(0, 30 - field.count))) }
+        tag.append(Data(repeating: 0, count: 35))
+        return tag
+    }
+
+    @Test func legacyChineseTagsRepairExistingLibraryWithoutChangingAudio() async throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let repository = MusicRepository(root: root)
+        _ = try await repository.load()
+        let title = Data([0xc6, 0xdf, 0xc0, 0xef, 0xcf, 0xe3]) // 七里香 in GBK
+        let artist = Data([0xd6, 0xdc, 0xbd, 0xdc, 0xc2, 0xd7]) // 周杰伦 in GBK
+        let album = Data([0xb7, 0xb6, 0xcc, 0xd8, 0xce, 0xf7]) // 范特西 in GBK
+        let audio = Data("read-only audio placeholder".utf8) + id3v1(title: title, artist: artist, album: album)
+        let original = Track(id: UUID(), title: String(data: title, encoding: .isoLatin1)!, artist: String(data: artist, encoding: .isoLatin1)!, album: String(data: album, encoding: .isoLatin1)!, albumArtist: String(data: artist, encoding: .isoLatin1)!, trackNumber: 7, duration: 180, filename: "legacy.mp3", digest: "unchanged-hash", artwork: nil, favorite: true)
+        let url = await repository.mediaURL(for: original)
+        try audio.write(to: url)
+        try await repository.save(original)
+        let repaired = try #require(try await repository.load().first)
+        #expect(repaired.title == "七里香")
+        #expect(repaired.artist == "周杰伦")
+        #expect(repaired.album == "范特西")
+        #expect(repaired.albumArtist == "周杰伦")
+        #expect(repaired.id == original.id && repaired.digest == original.digest && repaired.favorite)
+        #expect(try Data(contentsOf: url) == audio)
+        #expect(try await repository.load().first == repaired)
+        let metadata = try #require(try LegacyID3Metadata(url: url))
+        #expect(metadata.correctedTitle("七里香（现场）") == "七里香（现场）")
+    }
+
+    @Test func accentedWesternMetadataIsNotReinterpretedAsChinese() throws {
+        let url = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let name = "Björk"
+        let title = "Crème Brûlée"
+        try id3v1(title: title.data(using: .isoLatin1)!, artist: name.data(using: .isoLatin1)!, album: Data("Debut".utf8)).write(to: url)
+        let metadata = try #require(try LegacyID3Metadata(url: url))
+        #expect(metadata.correctedTitle(title) == title)
+        #expect(metadata.correctedArtist(name) == name)
+    }
+
 }

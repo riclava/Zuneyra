@@ -7,3 +7,5 @@
 - [第一阶段实现记录](./implementation.md)：运行方式、已实现功能与当前边界。
 
 - [Finder 文件共享导入](./finder-import.md)：从 Mac 向 iPhone 拖入音乐的步骤与文件管理规则。
+
+- [中文标签与播放中搜索修复](./metadata-compatibility.md)：本地样本分析、兼容策略和搜索栏回归验证。

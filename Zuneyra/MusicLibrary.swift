@@ -15,6 +15,7 @@ struct Track: Identifiable, Codable, Hashable, Sendable {
     let digest: String
     let artwork: String?
     var favorite = false
+    var metadataRepairVersion: Int?
     var albumKey: String { album + "\u{1F}" + albumArtist }
 }
 
@@ -85,6 +86,26 @@ actor MusicRepository {
             result = sqlite3_step(statement)
         }
         guard result == SQLITE_DONE else { throw failure("音乐库读取未完成") }
+        // Existing libraries need the same correction as newly imported files.
+        // IDs, hashes, filenames and favorites remain stable; source audio is read-only.
+        if tracks.contains(where: { $0.metadataRepairVersion != 1 }) {
+            try execute("BEGIN TRANSACTION")
+            do {
+                for index in tracks.indices where tracks[index].metadataRepairVersion != 1 {
+                    let old = tracks[index]
+                    let url = mediaURL(for: old)
+                    guard FileManager.default.fileExists(atPath: url.path) else { continue }
+                    let legacy = old.filename.lowercased().hasSuffix(".mp3") ? try? LegacyID3Metadata(url: url) : nil
+                    let title = legacy?.correctedTitle(old.title) ?? old.title
+                    let artist = legacy?.correctedArtist(old.artist) ?? old.artist
+                    let album = legacy?.correctedAlbum(old.album) ?? old.album
+                    let updated = Track(id: old.id, title: title, artist: artist, album: album, albumArtist: old.albumArtist == old.artist ? artist : old.albumArtist, trackNumber: old.trackNumber, duration: old.duration, filename: old.filename, digest: old.digest, artwork: old.artwork, favorite: old.favorite, metadataRepairVersion: 1)
+                    try save(updated)
+                    tracks[index] = updated
+                }
+                try execute("COMMIT")
+            } catch { try? execute("ROLLBACK"); throw error }
+        }
         return tracks
     }
     func save(_ track: Track) throws {
@@ -231,9 +252,13 @@ actor MusicRepository {
             let value = try? await item.load(.stringValue)
             return value?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
         }
-        let title = await text(.commonKeyTitle) ?? source.deletingPathExtension().lastPathComponent
-        let artist = await text(.commonKeyArtist) ?? "未知艺术家"
-        let album = await text(.commonKeyAlbumName) ?? "未命名专辑"
+        let rawTitle = await text(.commonKeyTitle)
+        let rawArtist = await text(.commonKeyArtist)
+        let rawAlbum = await text(.commonKeyAlbumName)
+        let legacy = source.pathExtension.lowercased() == "mp3" ? try? LegacyID3Metadata(url: staging) : nil
+        let title = legacy?.correctedTitle(rawTitle) ?? rawTitle ?? source.deletingPathExtension().lastPathComponent
+        let artist = legacy?.correctedArtist(rawArtist) ?? rawArtist ?? "未知艺术家"
+        let album = legacy?.correctedAlbum(rawAlbum) ?? rawAlbum ?? "未命名专辑"
         var artworkName: String?
         if let item = metadata.first(where: { $0.commonKey == .commonKeyArtwork }), let data = try? await item.load(.dataValue), data.count <= 12_000_000 {
             artworkName = "\(id.uuidString).artwork"
@@ -248,7 +273,7 @@ actor MusicRepository {
             if identifier.hasSuffix("TRCK"), let value = try? await item.load(.stringValue) { trackNumber = Int(value.split(separator: "/").first.map(String.init) ?? "") ?? 0 }
             if identifier.hasSuffix("trkn"), let data = try? await item.load(.dataValue), data.count >= 4 { trackNumber = Int(data[2]) * 256 + Int(data[3]) }
         }
-        let track = Track(id: id, title: title, artist: artist, album: album, albumArtist: albumArtist, trackNumber: trackNumber, duration: duration, filename: name, digest: digest, artwork: artworkName)
+        let track = Track(id: id, title: title, artist: artist, album: album, albumArtist: albumArtist, trackNumber: trackNumber, duration: duration, filename: name, digest: digest, artwork: artworkName, metadataRepairVersion: 1)
         let destination = root.appending(path: "Media/\(name)")
         do {
             try FileManager.default.moveItem(at: staging, to: destination)

@@ -26,6 +26,8 @@ final class PlayerStore {
     private var generation = 0
     private var hasStartedLoading = false
     private var isPreparing = false
+    private var isSeeking = false
+    private var seekRevision = 0
     private var wantsPlayback = false
     private var importTask: Task<Void, Never>?
     private var resumeAfterInterruption = false
@@ -34,10 +36,14 @@ final class PlayerStore {
         self.preferences = preferences
         self.repository = repository
         self.sharedDocumentsURL = sharedDocumentsURL
-        resources.timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.5, preferredTimescale: 600), queue: .main) { [weak self] time in
+        resources.timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.5, preferredTimescale: 600), queue: .main) { [weak self] _ in
             Task { @MainActor [weak self] in
-                guard let self, !self.isPreparing, time.seconds.isFinite else { return }
-                self.position = max(0, time.seconds)
+                guard let self, !self.isPreparing, !self.isSeeking else { return }
+                // A queued callback can contain a pre-seek time. Read the current
+                // clock here so it cannot overwrite the restored/scrubbed position.
+                let seconds = self.player.currentTime().seconds
+                guard seconds.isFinite else { return }
+                self.position = max(0, seconds)
                 let checkpoint = Int(self.position) / 5
                 if checkpoint != self.lastCheckpoint { self.lastCheckpoint = checkpoint; self.saveSession() }
             }
@@ -135,6 +141,8 @@ final class PlayerStore {
         generation += 1
         let request = generation
         isPreparing = true
+        seekRevision += 1
+        isSeeking = false
         wantsPlayback = autoplay
         player.pause()
         player.replaceCurrentItem(with: nil)
@@ -156,7 +164,7 @@ final class PlayerStore {
         if position > 0 { await player.seek(to: CMTime(seconds: position, preferredTimescale: 600)) }
         guard request == generation else { return }
         isPreparing = false
-        if autoplay && wantsPlayback { resume() }
+        if wantsPlayback { resume() }
         saveSession(); updateNowPlaying()
     }
     func toggle() { if isPlaying || player.timeControlStatus == .waitingToPlayAtSpecifiedRate { pause() } else { resume() } }
@@ -177,7 +185,15 @@ final class PlayerStore {
     func seek(to seconds: Double) {
         guard let current else { return }
         position = min(max(0, seconds), current.duration)
-        player.seek(to: CMTime(seconds: position, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+        seekRevision += 1
+        let revision = seekRevision
+        isSeeking = true
+        player.seek(to: CMTime(seconds: position, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.seekRevision == revision else { return }
+                self.isSeeking = false
+            }
+        }
         saveSession(); updateNowPlaying()
     }
     func next(automatically: Bool = false) {

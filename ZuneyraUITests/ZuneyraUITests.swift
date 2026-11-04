@@ -40,4 +40,29 @@ final class ZuneyraUITests: XCTestCase {
             XCUIApplication().launch()
         }
     }
+    @MainActor
+    func testSearchRemainsVisibleDuringPlaybackAndFiltering() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-test-playback"]
+        app.launch()
+        let search = app.textFields["librarySearchField"]
+        XCTAssertTrue(search.waitForExistence(timeout: 15))
+        app.buttons["歌曲"].firstMatch.tap()
+        let play = app.buttons["播放全部"]
+        XCTAssertTrue(play.waitForExistence(timeout: 10))
+        play.tap()
+        XCTAssertTrue(app.buttons["暂停"].firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(search.isHittable)
+        #if os(macOS)
+        search.click()
+        #else
+        search.tap()
+        #endif
+        search.typeText("Regression")
+        XCTAssertEqual(search.value as? String, "Regression")
+        XCTAssertTrue(app.buttons["播放 Search Regression"].waitForExistence(timeout: 5))
+        XCTAssertTrue(search.isHittable)
+        app.buttons["暂停"].firstMatch.tap()
+    }
+
 }
