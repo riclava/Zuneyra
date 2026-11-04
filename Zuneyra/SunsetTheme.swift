@@ -113,6 +113,29 @@ struct CoverArt: View {
     var cornerRadius: CGFloat = 4
     @State private var image: Image?
     private struct ArtworkKey: Hashable { let trackID: UUID; let artwork: String? }
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack {
+                if let image { image.resizable().scaledToFill() }
+                else {
+                    AlbumSleeve(track: track)
+                }
+            }.frame(width: proxy.size.width, height: proxy.size.height).clipped()
+        }
+        .aspectRatio(1, contentMode: .fit).clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+        .accessibilityLabel("\(track.album) 专辑封面")
+        .task(id: ArtworkKey(trackID: track.id, artwork: track.artwork)) {
+            image = nil
+            guard let data = try? await repository.artworkData(for: track), !Task.isCancelled else { return }
+            guard let source = CGImageSourceCreateWithData(data as CFData, nil), let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceThumbnailMaxPixelSize: 600, kCGImageSourceCreateThumbnailWithTransform: true] as CFDictionary) else { return }
+            image = Image(decorative: cg, scale: 1)
+        }
+    }
+}
+
+/// One cover design for the library, player, and system Now Playing artwork.
+struct AlbumSleeve: View {
+    let track: Track
     private var coverColor: Color {
         let colors = Sunset.sleeveColors
         let index = track.album.utf8.reduce(0) { ($0 + Int($1)) % colors.count }
@@ -121,8 +144,6 @@ struct CoverArt: View {
     var body: some View {
         GeometryReader { proxy in
             ZStack {
-                if let image { image.resizable().scaledToFill() }
-                else {
                     Rectangle().fill(coverColor)
                     ZStack {
                         Circle().fill(Sunset.ink.opacity(0.86))
@@ -158,17 +179,8 @@ struct CoverArt: View {
                         }.foregroundStyle(Sunset.ink)
                     }
 
-                }
             }.frame(width: proxy.size.width, height: proxy.size.height).clipped()
-        }
-        .aspectRatio(1, contentMode: .fit).clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-        .accessibilityLabel("\(track.album) 专辑封面")
-        .task(id: ArtworkKey(trackID: track.id, artwork: track.artwork)) {
-            image = nil
-            guard let data = try? await repository.artworkData(for: track), !Task.isCancelled else { return }
-            guard let source = CGImageSourceCreateWithData(data as CFData, nil), let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceThumbnailMaxPixelSize: 600, kCGImageSourceCreateThumbnailWithTransform: true] as CFDictionary) else { return }
-            image = Image(decorative: cg, scale: 1)
-        }
+        }.aspectRatio(1, contentMode: .fit)
     }
 }
 

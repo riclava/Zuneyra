@@ -314,6 +314,26 @@ private extension String {
 }
 
 extension MusicRepository {
+    func toggleAlbumFavorite(_ albumKey: String) throws -> [Track] {
+        let album = try load().filter { $0.albumKey == albumKey }
+        guard !album.isEmpty else { return [] }
+        let favorite = !album.allSatisfy(\.favorite)
+        try execute("BEGIN TRANSACTION")
+        do {
+            let updated = try album.map { track in
+                var track = track
+                track.favorite = favorite
+                try save(track)
+                return track
+            }
+            try execute("COMMIT")
+            return updated
+        } catch {
+            try? execute("ROLLBACK")
+            throw error
+        }
+    }
+
     func toggleFavorite(id: UUID) throws -> Track? {
         try open()
         // Read and update on the repository actor: a stale UI task must not

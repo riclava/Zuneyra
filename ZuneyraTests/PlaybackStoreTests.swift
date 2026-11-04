@@ -46,6 +46,23 @@ import MediaPlayer
         #expect(condition(), "Playback transition did not finish within five seconds")
     }
 
+    @Test func albumFavoriteCompletesPartialFavoritesAndPersists() async throws {
+        let f = try await Fixture(); defer { f.clean() }
+        f.store.toggleFavorite(f.tracks[0])
+        try await wait { f.store.tracks.first(where: { $0.id == f.tracks[0].id })?.favorite == true }
+        f.store.toggleAlbumFavorite(f.tracks[0].albumKey)
+        try await wait { !f.store.isManaging }
+        #expect(f.store.tracks.allSatisfy { $0.favorite })
+        let reopened = f.reopened()
+        await reopened.load()
+        #expect(reopened.tracks.allSatisfy { $0.favorite })
+        f.store.toggleAlbumFavorite(f.tracks[0].albumKey)
+        try await wait { !f.store.isManaging }
+        #expect(f.store.tracks.allSatisfy { !$0.favorite })
+        #expect(try await f.repository.load().allSatisfy { !$0.favorite })
+        #expect(try await f.repository.toggleAlbumFavorite("missing album").isEmpty)
+    }
+
     @Test func duplicateEntryPlaybackAndQueueEditsKeepCurrentPosition() async throws {
         let f = try await Fixture(); defer { f.clean() }
         let store = f.store
@@ -232,6 +249,10 @@ import MediaPlayer
         let info = try #require(MPNowPlayingInfoCenter.default().nowPlayingInfo)
         #expect(info[MPMediaItemPropertyTitle] as? String == f.tracks[0].title)
         #expect(info[MPNowPlayingInfoPropertyPlaybackRate] as? Double == 1)
+        // Files without embedded artwork still supply a full-size system cover.
+        let artwork = try #require(info[MPMediaItemPropertyArtwork] as? MPMediaItemArtwork)
+        #expect(artwork.bounds.size == CGSize(width: 600, height: 600))
+        #expect(artwork.image(at: CGSize(width: 600, height: 600)) != nil)
         store.pause()
         try await store.deletePlaylist(playlist.id)
         #expect(!store.performCarPlayAction(.playAll(.playlist(playlist.id), shuffled: false)))

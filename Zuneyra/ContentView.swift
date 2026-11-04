@@ -57,23 +57,24 @@ struct ContentView: View {
 
     var body: some View {
         @Bindable var store = store
-        Group {
-            #if os(macOS)
-            HStack(spacing: 0) {
-                sidebar.frame(width: 210)
-                Rectangle().fill(Sunset.stroke(scheme)).frame(width: 1)
+        VStack(spacing: 0) {
+            Group {
+                #if os(macOS)
+                HStack(spacing: 0) {
+                    sidebar.frame(width: 210)
+                    Rectangle().fill(Sunset.stroke(scheme)).frame(width: 1)
+                    navigationContent
+                }
+                #else
                 navigationContent
+                #endif
             }
-            #else
-            navigationContent
-            #endif
-        }
-        .tint(Sunset.accent(scheme))
-        .safeAreaInset(edge: .bottom, spacing: 0) {
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             if let current = store.current {
                 MiniPlayerView(track: current, openPlayer: { searchFocused = false; showingPlayer = true }, openQueue: { showingQueue = true })
             }
         }
+        .tint(Sunset.accent(scheme))
         .fileImporter(isPresented: $importing, allowedContentTypes: [.audio, .folder], allowsMultipleSelection: true) { result in
             switch result { case .success(let urls): store.importFiles(urls); case .failure(let error): store.errorMessage = error.localizedDescription }
         }
@@ -363,7 +364,7 @@ struct ContentView: View {
                         Text(librarySummary).font(.subheadline).foregroundStyle(Sunset.secondary(scheme))
                     }
                     if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 8) }
-                    if !store.tracks.isEmpty && !selecting { selectionButton }
+                    if section != .albums && !store.tracks.isEmpty && !selecting { selectionButton }
                 }
             }
         }
@@ -374,8 +375,18 @@ struct ContentView: View {
             Text(album.albumArtist).font(.subheadline).foregroundStyle(.secondary)
             Text("\(albumContents.count) 首 · \(playlistDuration(albumContents))").font(.footnote).foregroundStyle(.secondary)
             if !selecting && !filtered.isEmpty { playButtons.padding(.top, 12) }
-            if !selecting { selectionButton }
+            albumFavoriteButton(album)
         }.frame(maxWidth: .infinity, alignment: .leading)
+    }
+    private func albumFavoriteButton(_ album: Track) -> some View {
+        let songs = store.tracks.filter { $0.albumKey == album.albumKey }
+        let favorite = !songs.isEmpty && songs.allSatisfy(\.favorite)
+        return Button(favorite ? "取消收藏专辑" : "收藏专辑", systemImage: favorite ? "heart.fill" : "heart") {
+            store.toggleAlbumFavorite(album.albumKey)
+        }
+        .buttonStyle(StudioButtonStyle())
+        .disabled(store.isBusy)
+        .accessibilityValue(favorite ? "已收藏" : "未完整收藏")
     }
     private var collectionTitle: String {
         switch section {
@@ -470,6 +481,7 @@ struct ContentView: View {
                         }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
                     }.buttonStyle(.plain).accessibilityLabel("专辑 \(album[0].album)")
                     .contextMenu {
+                        albumFavoriteButton(album[0])
                         Button("播放全部", systemImage: "play.fill") { playAll(album) }
                         Button("下一首播放", systemImage: "text.line.first.and.arrowtriangle.forward") { store.insertNext(album) }
                         Button("添加到歌单", systemImage: "music.note.list") { playlistAddRequest = PlaylistAddRequest(tracks: album) }.disabled(store.isBusy)

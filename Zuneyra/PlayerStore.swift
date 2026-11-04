@@ -518,6 +518,20 @@ final class PlayerStore {
         if entry.id == previousID, player.currentItem != nil { seek(to: 0) }
         else { schedule(entry) }
     }
+    func toggleAlbumFavorite(_ albumKey: String) {
+        guard !isBusy else { return }
+        isManaging = true
+        Task {
+            defer { isManaging = false }
+            do {
+                let updated = try await repository.toggleAlbumFavorite(albumKey)
+                let byID = Dictionary(uniqueKeysWithValues: updated.map { ($0.id, $0) })
+                tracks = tracks.map { byID[$0.id] ?? $0 }
+                if let current, let updated = byID[current.id] { self.current = updated }
+            } catch { errorMessage = error.localizedDescription }
+        }
+    }
+
     func toggleFavorite(_ track: Track) {
         guard !isManaging else { return }
         Task {
@@ -540,18 +554,16 @@ final class PlayerStore {
     private func updateNowPlaying() {
         guard let current else { return }
         if artworkTrackID != current.id {
-            artworkTrackID = current.id; nowPlayingArtwork = nil; artworkTask?.cancel()
+            artworkTrackID = current.id; artworkTask?.cancel()
+            // Publish a real sleeve immediately, including for files without embedded art.
+            let renderer = ImageRenderer(content: AlbumSleeve(track: current).frame(width: 600, height: 600))
+            nowPlayingArtwork = renderer.cgImage.map { Self.mediaArtwork($0) }
             artworkTask = Task { [weak self, repository] in
                 guard let data = try? await repository.artworkData(for: current), !Task.isCancelled,
                       let source = CGImageSourceCreateWithData(data as CFData, nil),
-                      let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceThumbnailMaxPixelSize: 600] as CFDictionary),
+                      let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceThumbnailMaxPixelSize: 600, kCGImageSourceCreateThumbnailWithTransform: true] as CFDictionary),
                       let self, self.current?.id == current.id else { return }
-                #if os(iOS)
-                let image = UIImage(cgImage: cg)
-                #else
-                let image = NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
-                #endif
-                self.nowPlayingArtwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+                self.nowPlayingArtwork = Self.mediaArtwork(cg)
                 self.updateNowPlaying()
             }
         }
@@ -566,6 +578,14 @@ final class PlayerStore {
         #if os(macOS)
         MPNowPlayingInfoCenter.default().playbackState = isPlaying ? .playing : .paused
         #endif
+    }
+    private static func mediaArtwork(_ cg: CGImage) -> MPMediaItemArtwork {
+        #if os(iOS)
+        let image = UIImage(cgImage: cg)
+        #else
+        let image = NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
+        #endif
+        return MPMediaItemArtwork(boundsSize: image.size) { _ in image }
     }
     private func configureRemoteCommands() {
         let center = MPRemoteCommandCenter.shared()

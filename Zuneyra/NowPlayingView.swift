@@ -12,14 +12,15 @@ struct NowPlayingView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                CollectionSheetHeader(title: "正在聆听", close: { dismiss() })
+                CollectionSheetHeader(title: "正在聆听", subtitle: "ZUNEYRA · 私人唱片室", close: { dismiss() })
                 GeometryReader { geometry in
                     ScrollView {
                         if let track = store.current {
-                            VStack(spacing: 18) {
-                                CoverArt(track: track, repository: store.repository, cornerRadius: 4)
-                                    .frame(maxWidth: typeSize.isAccessibilitySize ? 120 : min(260, max(120, geometry.size.height * 0.32)))
-                                    .shadow(color: .black.opacity(scheme == .dark ? 0.25 : 0.12), radius: 16, x: 0, y: 9)
+                            VStack(spacing: 24) {
+                                CoverArt(track: track, repository: store.repository, cornerRadius: 12)
+                                    .frame(maxWidth: typeSize.isAccessibilitySize ? 120 : min(320, max(160, geometry.size.height * 0.40)))
+                                    .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.12), lineWidth: 1) }
+                                    .shadow(color: Sunset.ink.opacity(scheme == .dark ? 0.4 : 0.18), radius: 24, x: 0, y: 14)
                                     .accessibilityHidden(true)
 
                                 trackDetails(track)
@@ -28,11 +29,14 @@ struct NowPlayingView: View {
                                     transportControls
                                     PlaybackModesView()
                                 }
-                                VStack(spacing: 10) {
-                                    Rectangle().fill(Sunset.stroke(scheme)).frame(height: 1)
+                                VStack(spacing: 4) {
                                     queueLink
+                                    Rectangle().fill(Sunset.stroke(scheme)).frame(height: 1)
                                     outputDetails(track)
                                 }
+                                .padding(.horizontal, 16).padding(.vertical, 8)
+                                .background(Sunset.elevated(scheme).opacity(0.8), in: RoundedRectangle(cornerRadius: 18))
+                                .overlay { RoundedRectangle(cornerRadius: 18).strokeBorder(Sunset.stroke(scheme), lineWidth: 1) }
                             }
                             .padding(.horizontal, 28).padding(.top, 4).padding(.bottom, 24)
                             .frame(maxWidth: 460)
@@ -45,7 +49,10 @@ struct NowPlayingView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .background(Sunset.background(scheme).ignoresSafeArea())
+            .background {
+                LinearGradient(colors: [Sunset.panel(scheme), Sunset.background(scheme), Sunset.background(scheme)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                    .ignoresSafeArea()
+            }
             .collectionSheetChrome()
         }
         .tint(Sunset.accent(scheme))
@@ -58,8 +65,10 @@ struct NowPlayingView: View {
     private func trackDetails(_ track: Track) -> some View {
         HStack(alignment: .top, spacing: 16) {
             VStack(alignment: .leading, spacing: 8) {
+                Label(store.isPlaying ? "正在播放" : "已暂停", systemImage: store.isPlaying ? "waveform" : "pause.circle")
+                    .font(.caption.weight(.medium)).foregroundStyle(Sunset.accent(scheme))
                 Text(track.title)
-                    .font(.system(.title2, design: .serif).weight(.semibold))
+                    .font(.system(.title, design: .serif).weight(.semibold))
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityAddTraits(.isHeader)
                 Text(track.artist).font(.subheadline).foregroundStyle(Sunset.secondary(scheme))
@@ -88,9 +97,10 @@ struct NowPlayingView: View {
             Button { store.toggle() } label: {
                 Image(systemName: store.isPlaying ? "pause.fill" : "play.fill")
                     .font(.title2.weight(.semibold))
-                    .frame(width: 68, height: 68)
+                    .frame(width: 76, height: 76)
                     .background(Sunset.brand, in: Circle())
                     .foregroundStyle(Sunset.paper)
+                    .shadow(color: Sunset.brand.opacity(0.20), radius: 12, x: 0, y: 6)
             }.accessibilityLabel(store.isPlaying ? "暂停" : "播放")
             Button { store.next() } label: {
                 Image(systemName: "forward.end.fill").font(.title3).frame(width: 56, height: 56)
@@ -103,7 +113,7 @@ struct NowPlayingView: View {
     private var queueLink: some View {
         NavigationLink { PlaybackQueueView(showsClose: false) } label: {
             HStack(spacing: 10) {
-                Image(systemName: "list.bullet").font(.subheadline)
+                Image(systemName: "music.note.list").font(.subheadline).foregroundStyle(Sunset.accent(scheme))
                 Text("播放队列").font(.subheadline.weight(.medium))
                 Spacer(minLength: 4)
                 Text("\(store.queueState.upcoming.count) 首待播")
