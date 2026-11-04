@@ -18,13 +18,20 @@ import Carbon
     private func application() -> XCUIApplication {
         #if os(macOS)
         previousInput = TISCopyCurrentKeyboardInputSource().takeRetainedValue()
-        TISSelectInputSource(TISCopyCurrentASCIICapableKeyboardInputSource().takeRetainedValue())
+        let filter = [kTISPropertyInputSourceID as String: "com.apple.keylayout.ABC"] as CFDictionary
+        let layouts = TISCreateInputSourceList(filter, false).takeRetainedValue() as! [TISInputSource]
+        if let abc = layouts.first { XCTAssertEqual(TISSelectInputSource(abc), noErr) }
+        else { TISSelectInputSource(TISCopyCurrentASCIICapableKeyboardInputSource().takeRetainedValue()) }
         #endif
         let app = XCUIApplication()
         app.launchArguments = ["--ui-test-playback", "--ui-test-queue", "--ui-test-session", UUID().uuidString]
         app.launch()
         XCTAssertTrue(app.buttons["歌单"].firstMatch.waitForExistence(timeout: 15))
         return app
+    }
+    private func expectCount(_ query: XCUIElementQuery, _ count: Int, file: StaticString = #filePath, line: UInt = #line) {
+        let settled = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in query.count == count }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [settled], timeout: 5), .completed, file: file, line: line)
     }
     private func item(_ app: XCUIApplication, _ title: String) {
         #if os(macOS)
@@ -49,11 +56,11 @@ import Carbon
         app.buttons["createPlaylist"].firstMatch.tap()
         let name = app.textFields["playlistNameField"]
         XCTAssertTrue(name.waitForExistence(timeout: 5))
-        name.tap(); name.typeText("Roadtrip")
+        name.tap(); name.typeText("Roadtrip ")
         #if os(macOS)
-        name.typeKey(.return, modifierFlags: []) // Commit any active input-method composition.
+        name.typeKey(.tab, modifierFlags: []) // Commit composition without submitting the form twice.
         #endif
-        if app.buttons["savePlaylistName"].firstMatch.exists { app.buttons["savePlaylistName"].firstMatch.tap() }
+        app.buttons["savePlaylistName"].firstMatch.tap()
         let card = app.buttons["歌单 Roadtrip"].firstMatch
         XCTAssertTrue(card.waitForExistence(timeout: 5))
         card.tap()
@@ -64,7 +71,7 @@ import Carbon
         }
         app.buttons["confirmAddPlaylistSongs"].firstMatch.tap()
         let rows = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "playlistTrack-"))
-        XCTAssertEqual(rows.count, 3)
+        expectCount(rows, 3)
         app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "歌单歌曲操作 Queue Third")).firstMatch.tap()
         item(app, "上移")
         let reordered = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS %@", "Queue Third"), object: rows.element(boundBy: 1))
@@ -73,7 +80,7 @@ import Carbon
         screenshot.name = "Playlist detail"; screenshot.lifetime = .keepAlways; add(screenshot)
         app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "歌单歌曲操作 Search Regression")).firstMatch.tap()
         item(app, "从歌单移除")
-        XCTAssertEqual(rows.count, 2)
+        expectCount(rows, 2)
         actions(app); item(app, "重命名")
         XCTAssertTrue(name.waitForExistence(timeout: 5))
         name.tap()
@@ -83,17 +90,17 @@ import Carbon
         name.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
         name.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 20))
         #endif
-        name.typeText("Nightdrive")
+        name.typeText("Nightdrive ")
         #if os(macOS)
-        name.typeKey(.return, modifierFlags: []) // Commit any active input-method composition.
+        name.typeKey(.tab, modifierFlags: []) // Commit composition without submitting the form twice.
         #endif
-        if app.buttons["savePlaylistName"].firstMatch.exists { app.buttons["savePlaylistName"].firstMatch.tap() }
+        app.buttons["savePlaylistName"].firstMatch.tap()
         XCTAssertTrue(app.buttons["playPlaylist"].firstMatch.waitForExistence(timeout: 5))
         app.terminate(); app.launch()
         app.buttons["歌单"].firstMatch.tap()
         let renamed = app.buttons["歌单 Nightdrive"].firstMatch
         XCTAssertTrue(renamed.waitForExistence(timeout: 10)); renamed.tap()
-        XCTAssertEqual(rows.count, 2)
+        expectCount(rows, 2)
         XCTAssertTrue(rows.element(boundBy: 0).label.contains("Queue Third"))
         app.buttons["playPlaylist"].firstMatch.tap()
         XCTAssertTrue(app.buttons["暂停"].firstMatch.waitForExistence(timeout: 10))
@@ -119,7 +126,10 @@ import Carbon
         context(app.buttons["播放 Search Regression"])
         item(app, "添加到歌单")
         let name = app.textFields["newPlaylistFromTracksName"]
-        XCTAssertTrue(name.waitForExistence(timeout: 5)); name.tap(); name.typeText("Favourites")
+        XCTAssertTrue(name.waitForExistence(timeout: 5)); name.tap(); name.typeText("Favourites ")
+        #if os(macOS)
+        name.typeKey(.tab, modifierFlags: [])
+        #endif
         app.buttons["createPlaylistWithTracks"].firstMatch.tap()
         XCTAssertTrue(app.buttons["selectTracks"].firstMatch.waitForExistence(timeout: 5))
         app.buttons["selectTracks"].firstMatch.tap()
@@ -134,14 +144,14 @@ import Carbon
         let card = app.buttons["歌单 Favourites"].firstMatch
         XCTAssertTrue(card.waitForExistence(timeout: 5)); card.tap()
         let rows = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "playlistTrack-"))
-        XCTAssertEqual(rows.count, 3)
+        expectCount(rows, 3)
         app.terminate(); app.launch()
         let album = app.buttons["专辑 UI Fixture"].firstMatch
         XCTAssertTrue(album.waitForExistence(timeout: 10)); context(album)
         item(app, "添加到歌单")
         XCTAssertTrue(existing.waitForExistence(timeout: 5)); existing.tap()
         app.buttons["歌单"].firstMatch.tap(); card.tap()
-        XCTAssertEqual(rows.count, 3)
+        expectCount(rows, 3)
     }
 
     #if os(iOS)

@@ -34,6 +34,13 @@ import AVFoundation
             try file.write(from: buffer)
             try await repository.save(track)
         }
+        if ProcessInfo.processInfo.arguments.contains("--ui-test-carplay") {
+            let songs = try await repository.load()
+            if let first = songs.first { _ = try await repository.toggleFavorite(id: first.id) }
+            _ = try await repository.createPlaylist(name: "车载测试歌单", trackIDs: songs.map(\.id))
+            let missing = Track(id: UUID(), title: "不可用文件测试", artist: "Generated Fixture", album: "不可用文件测试", albumArtist: "Generated Fixture", trackNumber: 1, duration: 30, filename: "missing-validation.wav", digest: "missing-validation", artwork: nil, metadataRepairVersion: 1)
+            try await repository.save(missing)
+        }
     }
 }
 #endif

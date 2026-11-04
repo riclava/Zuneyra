@@ -62,7 +62,9 @@ actor MusicRepository {
                 try? FileManager.default.removeItem(at: url)
             }
             #if os(iOS)
-            try FileManager.default.setAttributes([.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication], ofItemAtPath: root.path)
+            for url in [root, root.appending(path: "Media"), root.appending(path: "library.sqlite"), root.appending(path: "library.sqlite-wal"), root.appending(path: "library.sqlite-shm")] where FileManager.default.fileExists(atPath: url.path) {
+                try FileManager.default.setAttributes([.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication], ofItemAtPath: url.path)
+            }
             #endif
         } catch {
             sqlite3_close(db); database = nil; throw error

@@ -17,3 +17,7 @@
 - [本地歌单](./playlists.md)：创建与编辑、歌曲添加入口、播放与 SQLite 升级规则。
 
 - [iPhone 真机播放验收](./device-playback-validation.md)：后台、锁屏、蓝牙与耳机路由实测记录。
+
+- [CarPlay 首版](./carplay.md)：车载浏览、系统播放、连接恢复、构建方式与验收状态。
+
+- [CarPlay 权限申请准备](./carplay-entitlement-request.md)：Apple 申请步骤、英文说明草稿与获批后的签名配置。

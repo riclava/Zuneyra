@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import MediaPlayer
 @testable import Zuneyra
 
 @Suite(.serialized)
@@ -212,6 +213,43 @@ import Testing
         try await wait { store.isPlaying }
         #expect(!store.queueState.shuffle && store.queueState.repeatMode == .all)
         #expect(store.current?.id == f.tracks[1].id && store.queue.map(\.id) == f.tracks.prefix(2).map(\.id))
+    }
+
+    @Test func carPlayActionsSharePhoneQueueAndPublishPlaybackModes() async throws {
+        let f = try await Fixture(); defer { f.clean() }
+        let store = f.store
+        let playlist = try await store.createPlaylist(name: "CarPlay", tracks: [f.tracks[1], f.tracks[0]])
+        #expect(store.performCarPlayAction(.playAll(.playlist(playlist.id), shuffled: false)))
+        try await wait { store.isPlaying }
+        #expect(store.current?.id == f.tracks[1].id && store.queue.map(\.id) == [f.tracks[1].id, f.tracks[0].id])
+        let second = try #require(store.queueState.upcoming.first)
+        #expect(store.performCarPlayAction(.queueEntry(second)))
+        try await wait { store.current?.id == f.tracks[0].id && store.isPlaying }
+        store.setShuffle(true); store.setRepeatMode(.one)
+        let remote = MPRemoteCommandCenter.shared()
+        #expect(remote.changeShuffleModeCommand.currentShuffleType == .items)
+        #expect(remote.changeRepeatModeCommand.currentRepeatType == .one)
+        let info = try #require(MPNowPlayingInfoCenter.default().nowPlayingInfo)
+        #expect(info[MPMediaItemPropertyTitle] as? String == f.tracks[0].title)
+        #expect(info[MPNowPlayingInfoPropertyPlaybackRate] as? Double == 1)
+        store.pause()
+        try await store.deletePlaylist(playlist.id)
+        #expect(!store.performCarPlayAction(.playAll(.playlist(playlist.id), shuffled: false)))
+        #expect(store.errorMessage != nil && !store.isPlaying)
+        #expect(!store.performCarPlayAction(.queueEntry(UUID())))
+    }
+
+    @Test func carPlayMissingFileSelectionStopsAndPreservesRecoverableQueue() async throws {
+        let f = try await Fixture(); defer { f.clean() }
+        let store = f.store
+        let playlist = try await store.createPlaylist(name: "Missing", tracks: f.tracks)
+        try FileManager.default.removeItem(at: await f.repository.mediaURL(for: f.tracks[1]))
+        #expect(store.performCarPlayAction(.play(f.tracks[1].id, .playlist(playlist.id))))
+        try await wait { store.errorMessage != nil }
+        #expect(!store.isPlaying && store.current?.id == f.tracks[1].id && store.queue.count == 3)
+        #expect(store.performCarPlayAction(.play(f.tracks[2].id, .playlist(playlist.id))))
+        try await wait { store.isPlaying }
+        #expect(store.current?.id == f.tracks[2].id)
     }
 
     @Test func restorationAtEndOfRepeatingQueueStaysPaused() async throws {

@@ -2,6 +2,12 @@ import SwiftUI
 import AVFoundation
 import MediaPlayer
 import Observation
+import ImageIO
+#if os(iOS)
+import UIKit
+#else
+import AppKit
+#endif
 
 @MainActor @Observable
 final class PlayerStore {
@@ -40,6 +46,9 @@ final class PlayerStore {
     private var player: AVPlayer { resources.player }
     private var itemObservation: NSKeyValueObservation?
     private var rateObservation: NSKeyValueObservation?
+    @ObservationIgnored private var artworkTask: Task<Void, Never>?
+    private var artworkTrackID: UUID?
+    private var nowPlayingArtwork: MPMediaItemArtwork?
     private var lastCheckpoint = -1
     private var generation = 0
     private var hasStartedLoading = false
@@ -333,15 +342,40 @@ final class PlayerStore {
         guard queueState.upcoming.indices.contains(target) else { return }
         moveUpcoming(from: IndexSet(integer: index), to: direction > 0 ? target + 1 : target)
     }
-    func toggleShuffle() {
+    func toggleShuffle() { setShuffle(!queueState.shuffle) }
+    func setShuffle(_ enabled: Bool) {
         guard !isManaging else { return }
-        queueState.setShuffle(!queueState.shuffle)
+        queueState.setShuffle(enabled)
         saveSession(); updateNowPlaying()
     }
-    func cycleRepeatMode() {
+    func cycleRepeatMode() { setRepeatMode(queueState.repeatMode.next) }
+    func setRepeatMode(_ mode: QueueRepeatMode) {
         guard !isManaging else { return }
-        queueState.setRepeat(queueState.repeatMode.next)
+        queueState.setRepeat(mode)
         saveSession(); updateNowPlaying()
+    }
+    @discardableResult func performCarPlayAction(_ action: CarPlayAction) -> Bool {
+        guard !isLoading, !isManaging else { return false }
+        let catalog = CarPlayCatalog(tracks: tracks, playlists: playlists, queue: queueState)
+        switch action {
+        case .play(let id, let route):
+            let songs = catalog.tracks(for: route)
+            guard let chosen = songs.first(where: { $0.id == id }) else { return carPlayContentUnavailable() }
+            setShuffle(false); play(chosen, context: songs)
+        case .playAll(let route, let shuffled):
+            let songs = catalog.tracks(for: route)
+            guard let chosen = shuffled ? songs.randomElement() : songs.first else { return carPlayContentUnavailable() }
+            setShuffle(shuffled); play(chosen, context: songs)
+        case .queueEntry(let id):
+            guard queueState.canonical.contains(where: { $0.id == id }) else { return carPlayContentUnavailable() }
+            playQueueEntry(id)
+        case .open: return false
+        }
+        return true
+    }
+    private func carPlayContentUnavailable() -> Bool {
+        errorMessage = "这些歌曲已从音乐库或歌单中移除，请返回列表重新选择。"
+        return false
     }
     private func beginTransition(autoplay: Bool) -> Int {
         generation += 1
@@ -431,6 +465,9 @@ final class PlayerStore {
     }
     func pause() {
         wantsPlayback = false; resumeAfterInterruption = false; player.pause(); isPlaying = false; saveSession(); updateNowPlaying()
+        #if os(iOS)
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        #endif
         #if DEBUG && os(iOS)
         DevicePlaybackCheck.record("pause", store: self)
         #endif
@@ -515,7 +552,30 @@ final class PlayerStore {
     }
     private func updateNowPlaying() {
         guard let current else { return }
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = [MPMediaItemPropertyTitle: current.title, MPMediaItemPropertyArtist: current.artist, MPMediaItemPropertyAlbumTitle: current.album, MPMediaItemPropertyPlaybackDuration: current.duration, MPNowPlayingInfoPropertyElapsedPlaybackTime: position, MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0]
+        if artworkTrackID != current.id {
+            artworkTrackID = current.id; nowPlayingArtwork = nil; artworkTask?.cancel()
+            artworkTask = Task { [weak self, repository] in
+                guard let data = try? await repository.artworkData(for: current), !Task.isCancelled,
+                      let source = CGImageSourceCreateWithData(data as CFData, nil),
+                      let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceThumbnailMaxPixelSize: 600] as CFDictionary),
+                      let self, self.current?.id == current.id else { return }
+                #if os(iOS)
+                let image = UIImage(cgImage: cg)
+                #else
+                let image = NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
+                #endif
+                self.nowPlayingArtwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+                self.updateNowPlaying()
+            }
+        }
+        var info: [String: Any] = [MPMediaItemPropertyTitle: current.title, MPMediaItemPropertyArtist: current.artist, MPMediaItemPropertyAlbumTitle: current.album, MPMediaItemPropertyPlaybackDuration: current.duration, MPNowPlayingInfoPropertyElapsedPlaybackTime: position, MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0]
+        if let nowPlayingArtwork { info[MPMediaItemPropertyArtwork] = nowPlayingArtwork }
+        info[MPNowPlayingInfoPropertyPlaybackQueueCount] = queueState.canonical.count
+        info[MPNowPlayingInfoPropertyPlaybackQueueIndex] = queueState.orderedEntries.firstIndex { $0.id == queueState.currentID } ?? 0
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        let center = MPRemoteCommandCenter.shared()
+        center.changeShuffleModeCommand.currentShuffleType = queueState.shuffle ? .items : .off
+        center.changeRepeatModeCommand.currentRepeatType = switch queueState.repeatMode { case .off: .off; case .all: .all; case .one: .one }
         #if os(macOS)
         MPNowPlayingInfoCenter.default().playbackState = isPlaying ? .playing : .paused
         #endif
@@ -531,6 +591,20 @@ final class PlayerStore {
         bind(center.togglePlayPauseCommand) { [weak self] in self?.toggle() }
         bind(center.nextTrackCommand) { [weak self] in self?.next() }
         bind(center.previousTrackCommand) { [weak self] in self?.previous() }
+        center.changeShuffleModeCommand.isEnabled = true
+        center.changeRepeatModeCommand.isEnabled = true
+        let shuffleToken = center.changeShuffleModeCommand.addTarget { [weak self] event in
+            guard let event = event as? MPChangeShuffleModeCommandEvent else { return .commandFailed }
+            let enabled = event.shuffleType != .off
+            Task { @MainActor [weak self] in self?.setShuffle(enabled) }; return .success
+        }
+        resources.remoteTargets.append((center.changeShuffleModeCommand, shuffleToken))
+        let repeatToken = center.changeRepeatModeCommand.addTarget { [weak self] event in
+            guard let event = event as? MPChangeRepeatModeCommandEvent else { return .commandFailed }
+            let mode: QueueRepeatMode = switch event.repeatType { case .one: .one; case .all: .all; default: .off }
+            Task { @MainActor [weak self] in self?.setRepeatMode(mode) }; return .success
+        }
+        resources.remoteTargets.append((center.changeRepeatModeCommand, repeatToken))
         let token = center.changePlaybackPositionCommand.addTarget { [weak self] event in
             guard let event = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
             let value = event.positionTime
