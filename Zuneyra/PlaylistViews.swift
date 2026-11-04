@@ -10,25 +10,37 @@ private extension View {
 
 struct PlaylistArtwork: View {
     @Environment(PlayerStore.self) private var store
+    @Environment(\.colorScheme) private var scheme
     let tracks: [Track]
     var body: some View {
         GeometryReader { proxy in
-            if tracks.count == 1, let first = tracks.first {
+            if tracks.isEmpty {
+                ZStack {
+                    Rectangle().fill(Sunset.panel(scheme))
+                    ForEach(0..<3) { index in
+                        Circle().stroke(Sunset.secondary(scheme).opacity(0.14), lineWidth: 1)
+                            .frame(width: proxy.size.width * (0.52 + Double(index) * 0.15))
+                    }
+                    Circle().fill(Sunset.accent(scheme)).frame(width: proxy.size.width * 0.12, height: proxy.size.width * 0.12)
+                    Circle().fill(Sunset.elevated(scheme)).frame(width: proxy.size.width * 0.025, height: proxy.size.width * 0.025)
+                }
+            } else if tracks.count == 1, let first = tracks.first {
                 CoverArt(track: first, repository: store.repository)
             } else {
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 2), GridItem(.flexible(), spacing: 2)], spacing: 2) {
                     ForEach(0..<4) { index in
                         Group {
-                            if tracks.indices.contains(index) { CoverArt(track: tracks[index], repository: store.repository) }
-                            else {
-                                Rectangle().fill(LinearGradient(colors: [Sunset.peach, Sunset.coral], startPoint: .topLeading, endPoint: .bottomTrailing))
-                                    .overlay { Image(systemName: "music.note").font(.system(size: proxy.size.width * 0.15, weight: .bold)).foregroundStyle(.white.opacity(0.8)) }
-                            }
+                            if tracks.indices.contains(index) { CoverArt(track: tracks[index], repository: store.repository, cornerRadius: 0) }
+                            else { Rectangle().fill(Sunset.panel(scheme)) }
                         }.frame(width: (proxy.size.width - 2) / 2, height: (proxy.size.width - 2) / 2).clipped()
                     }
                 }
             }
-        }.aspectRatio(1, contentMode: .fit).clipShape(RoundedRectangle(cornerRadius: 14)).accessibilityHidden(true)
+        }
+        .aspectRatio(1, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .overlay { RoundedRectangle(cornerRadius: 4).stroke(Sunset.stroke(scheme), lineWidth: 1) }
+        .accessibilityHidden(true)
     }
 }
 
@@ -47,42 +59,68 @@ struct PlaylistLibraryView: View {
     let query: String
     @State private var creating = false
     private var filtered: [Playlist] { store.playlists.filter { query.isEmpty || $0.name.localizedStandardContains(query) } }
+    private var columns: [GridItem] {
+        if typeSize.isAccessibilitySize { return [GridItem(.flexible())] }
+        #if os(macOS)
+        return [GridItem(.adaptive(minimum: 190, maximum: 320), spacing: 28)]
+        #else
+        return [GridItem(.adaptive(minimum: 145, maximum: 280), spacing: 20)]
+        #endif
+    }
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: 28) {
             let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 16)) : AnyLayout(HStackLayout(alignment: .center, spacing: 16))
             layout {
-                VStack(alignment: .leading, spacing: 7) {
-                    Text("歌单").font(.largeTitle.bold()).accessibilityAddTraits(.isHeader)
-                    Text(query.isEmpty ? "\(store.playlists.count) 个歌单 · 保存在本机" : "找到 \(filtered.count) 个歌单")
-                        .font(.subheadline).foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("歌单").font(.system(.largeTitle, design: .serif).weight(.medium)).accessibilityAddTraits(.isHeader)
+                    Text(query.isEmpty ? "\(store.playlists.count) 个歌单 · 你的私人选集" : "找到 \(filtered.count) 个歌单")
+                        .font(.subheadline).foregroundStyle(Sunset.secondary(scheme))
                         .fixedSize(horizontal: false, vertical: true)
                 }.frame(maxWidth: .infinity, alignment: .leading)
-                Button { creating = true } label: {
-                    Label("新建歌单", systemImage: "plus").frame(minHeight: 32).fixedSize(horizontal: true, vertical: false)
-                }
-                .buttonStyle(.borderedProminent).tint(Sunset.coral)
-                .disabled(store.isBusy).accessibilityIdentifier("createPlaylist")
+                Button { creating = true } label: { Label("新建歌单", systemImage: "plus") }
+                    .buttonStyle(StudioButtonStyle(prominent: true))
+                    .disabled(store.isBusy)
             }
+            Rectangle().fill(Sunset.stroke(scheme)).frame(height: 1)
             if store.isLoading { ProgressView("正在读取歌单…") }
             else if filtered.isEmpty {
-                ContentUnavailableView(query.isEmpty ? "给喜欢的音乐一个位置" : "没有找到歌单", systemImage: "music.note.list", description: Text(query.isEmpty ? "创建自己的歌单，按心情、场景或旅程收藏歌曲。" : "试试其他歌单名称。"))
+                StudioEmptyState(symbol: "music.note.list", title: query.isEmpty ? "为喜欢的音乐，留一个位置" : "没有找到歌单", detail: query.isEmpty ? "创建一份私人选集，收录音乐库中的歌曲。" : "试试其他歌单名称。")
+                    .frame(maxWidth: .infinity).padding(.vertical, 40)
             } else {
-                LazyVGrid(columns: typeSize.isAccessibilitySize ? [GridItem(.flexible())] : [GridItem(.adaptive(minimum: 145, maximum: 260), spacing: 22)], alignment: .leading, spacing: 25) {
+                LazyVGrid(columns: columns, alignment: .leading, spacing: 32) {
                     ForEach(filtered) { playlist in
                         let tracks = store.playlistTracks(playlist.id)
                         NavigationLink { PlaylistDetailView(playlistID: playlist.id) } label: {
-                            VStack(alignment: .leading, spacing: 8) {
-                                PlaylistArtwork(tracks: Array(tracks.prefix(4)))
-                                Text(playlist.name).font(.headline).lineLimit(typeSize.isAccessibilitySize ? nil : 2)
-                                Text("\(tracks.count) 首 · \(playlistDuration(tracks))").font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                            }.contentShape(Rectangle())
-                        }.buttonStyle(.plain).accessibilityLabel("歌单 \(playlist.name)")
+                            playlistCard(playlist, tracks: tracks)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("歌单 \(playlist.name)，\(tracks.count) 首，\(playlistDuration(tracks))")
                     }
                 }
             }
         }
         .tint(Sunset.accent(scheme))
         .sheet(isPresented: $creating) { PlaylistNameForm() }
+    }
+
+    private func playlistCard(_ playlist: Playlist, tracks: [Track]) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            PlaylistArtwork(tracks: Array(tracks.prefix(4)))
+                .padding(7)
+                .background(Sunset.elevated(scheme), in: RoundedRectangle(cornerRadius: 5))
+                .overlay { RoundedRectangle(cornerRadius: 5).stroke(Sunset.stroke(scheme), lineWidth: 1) }
+                .shadow(color: .black.opacity(scheme == .dark ? 0.16 : 0.06), radius: 8, y: 4)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(playlist.name).font(.system(.title3, design: .serif).weight(.medium)).foregroundStyle(.primary)
+                    .lineLimit(typeSize.isAccessibilitySize ? nil : 2)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("\(tracks.count) 首 · \(playlistDuration(tracks))")
+                    .font(.caption).foregroundStyle(Sunset.secondary(scheme))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
     }
 }
 
@@ -96,24 +134,38 @@ struct PlaylistNameForm: View {
     init(playlistID: UUID? = nil, name: String = "") { self.playlistID = playlistID; _name = State(initialValue: name) }
     private var valid: Bool { !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && name.count <= 100 }
     var body: some View {
-        NavigationStack {
-            Form {
-                TextField("歌单名称", text: $name).autocorrectionDisabled().accessibilityIdentifier("playlistNameField").onSubmit { save() }
-                Text("为你的音乐取个名字，最多 100 个字符。").font(.footnote).foregroundStyle(.secondary)
-            }.scrollContentBackground(.hidden).background(Sunset.background(scheme))
-                .navigationTitle(playlistID == nil ? "新建歌单" : "重命名歌单")
-                #if os(iOS)
-                .navigationBarTitleDisplayMode(.inline)
-                #endif
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() }.disabled(store.isEditingPlaylists) }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("保存") { save() }.disabled(!valid || store.isBusy).accessibilityIdentifier("savePlaylistName")
-                    }
-                }
-        }.tint(Sunset.accent(scheme)).playlistError($error).interactiveDismissDisabled(store.isEditingPlaylists)
+        VStack(spacing: 0) {
+            CollectionSheetHeader(title: playlistID == nil ? "新建歌单" : "重命名歌单", close: { dismiss() })
+                .disabled(store.isEditingPlaylists)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("歌单名称").font(.subheadline.weight(.medium))
+                    TextField("输入名称", text: $name).autocorrectionDisabled().onSubmit { save() }
+                        .textFieldStyle(.plain).padding(12)
+                        .background(Sunset.elevated(scheme), in: RoundedRectangle(cornerRadius: 6))
+                        .overlay { RoundedRectangle(cornerRadius: 6).stroke(Sunset.stroke(scheme), lineWidth: 1) }
+                        .accessibilityLabel("歌单名称")
+                    HStack(alignment: .top) {
+                        Text("最多 100 个字符。")
+                        Spacer(minLength: 8)
+                        Text("\(name.count) / 100").monospacedDigit()
+                    }.font(.footnote).foregroundStyle(Sunset.secondary(scheme))
+                }.frame(maxWidth: .infinity, alignment: .leading).padding(24)
+            }
+            HStack(spacing: 12) {
+                Button("取消") { dismiss() }.buttonStyle(StudioButtonStyle())
+                    .disabled(store.isEditingPlaylists)
+                Spacer(minLength: 8)
+                Button("保存") { save() }.buttonStyle(StudioButtonStyle(prominent: true))
+                    .keyboardShortcut(.defaultAction).disabled(!valid || store.isBusy)
+            }.padding(.horizontal, 24).padding(.bottom, 24)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(Sunset.background(scheme).ignoresSafeArea())
+        .tint(Sunset.accent(scheme)).playlistError($error).interactiveDismissDisabled(store.isEditingPlaylists)
+        .collectionSheetChrome()
         #if os(macOS)
-        .frame(width: 440, height: 240)
+        .frame(width: 440, height: 320)
         #endif
     }
     private func save() {
@@ -137,19 +189,21 @@ struct AddToPlaylistView: View {
     @State private var name = ""
     @State private var error: String?
     var body: some View {
-        NavigationStack {
+        VStack(spacing: 0) {
+            CollectionSheetHeader(title: "添加到歌单", subtitle: "已选择 \(tracks.count) 首歌曲", close: { dismiss() })
+                .disabled(store.isEditingPlaylists)
             List {
                 Section {
-                    TextField("新歌单名称", text: $name).autocorrectionDisabled().accessibilityIdentifier("newPlaylistFromTracksName")
+                    TextField("新歌单名称", text: $name).autocorrectionDisabled().listRowBackground(Color.clear)
                     Button { add(to: nil) } label: {
                         Label("新建并加入", systemImage: "plus").frame(maxWidth: .infinity, minHeight: 32)
                     }
-                        .buttonStyle(.borderedProminent).tint(Sunset.coral)
+                        .buttonStyle(StudioButtonStyle(prominent: true))
                         .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || name.count > 100 || store.isBusy || tracks.isEmpty)
-                        .accessibilityIdentifier("createPlaylistWithTracks")
+                        .listRowBackground(Color.clear)
                 } header: { Text("为 \(tracks.count) 首歌曲新建歌单") }
                 Section("已有歌单") {
-                    if store.playlists.isEmpty { Text("还没有歌单，也可以在上方直接新建。").foregroundStyle(.secondary) }
+                    if store.playlists.isEmpty { Text("还没有歌单，也可以在上方直接新建。").foregroundStyle(.secondary).listRowBackground(Color.clear) }
                     ForEach(store.playlists) { playlist in
                         Button { add(to: playlist.id) } label: {
                             HStack(spacing: 12) {
@@ -162,15 +216,15 @@ struct AddToPlaylistView: View {
                                 Image(systemName: "plus.circle").foregroundStyle(Sunset.accent(scheme))
                             }.frame(minHeight: 48).contentShape(Rectangle())
                         }.buttonStyle(.plain).disabled(store.isBusy || tracks.isEmpty).accessibilityLabel("加入歌单 \(playlist.name)")
+                            .listRowBackground(Color.clear)
                     }
                 }
-            }.scrollContentBackground(.hidden).background(Sunset.background(scheme))
-                .navigationTitle("添加到歌单")
-                #if os(iOS)
-                .navigationBarTitleDisplayMode(.inline)
-                #endif
-                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() }.disabled(store.isEditingPlaylists) } }
-        }.tint(Sunset.accent(scheme)).playlistError($error).interactiveDismissDisabled(store.isEditingPlaylists)
+            }.listStyle(.plain).scrollContentBackground(.hidden).background(Sunset.background(scheme))
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(Sunset.background(scheme).ignoresSafeArea())
+        .tint(Sunset.accent(scheme)).playlistError($error).interactiveDismissDisabled(store.isEditingPlaylists)
+        .collectionSheetChrome()
         #if os(macOS)
         .frame(width: 520, height: 580)
         #endif
@@ -204,30 +258,23 @@ struct PlaylistDetailView: View {
     private var playlist: Playlist? { store.playlists.first { $0.id == playlistID } }
     private var tracks: [Track] { store.playlistTracks(playlistID) }
     var body: some View {
-        Group {
+        VStack(spacing: 0) {
+            CollectionSheetHeader(title: "歌单", back: { dismiss() })
             if let playlist {
+                editingActions
+                    .padding(.horizontal, 24).padding(.bottom, 12)
                 List {
                     Section {
-                        let headerLayout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 16)) : AnyLayout(HStackLayout(spacing: 20))
-                        headerLayout {
-                            PlaylistArtwork(tracks: Array(tracks.prefix(4))).frame(width: 100, height: 100)
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text(playlist.name).font(.title2.bold()).fixedSize(horizontal: false, vertical: true)
-                                Text("\(tracks.count) 首 · \(playlistDuration(tracks))").font(.subheadline).foregroundStyle(.secondary)
-                                Text("保存在本机").font(.caption).foregroundStyle(Sunset.accent(scheme))
-                            }
-                        }.padding(.vertical, 12)
+                        playlistHeading(playlist)
                         playbackActions
-                    }.listRowBackground(Sunset.panel(scheme))
+                    }.listRowBackground(Color.clear)
                     Section {
                         if tracks.isEmpty {
-                            ContentUnavailableView {
-                                Label("歌单还没有歌曲", systemImage: "music.note")
-                            } description: {
-                                Text("从音乐库中挑选歌曲，组成你的专属歌单。")
-                            } actions: {
-                                Button("添加歌曲", systemImage: "plus") { adding = true }.disabled(store.isBusy)
-                            }
+                            VStack(spacing: 16) {
+                                StudioEmptyState(symbol: "music.note", title: "歌单还没有歌曲", detail: "从音乐库中选择歌曲，添加到这个歌单。")
+                                Button("添加歌曲", systemImage: "plus") { adding = true }
+                                    .buttonStyle(StudioButtonStyle(prominent: true)).disabled(store.isBusy)
+                            }.frame(maxWidth: .infinity).padding(.vertical, 24)
                         }
                         ForEach(tracks) { track in songRow(track) }
                             .onMove { offsets, destination in perform { try await store.movePlaylistTracks(playlistID, from: offsets, to: destination) } }
@@ -237,71 +284,86 @@ struct PlaylistDetailView: View {
                             }
                     } header: { Text("歌曲") } footer: { Text(sorting ? "拖动歌曲右侧的把手调整顺序，完成后点击“完成排序”。" : "从歌单移除歌曲不会删除音乐库文件。") }
                 }
+                .listStyle(.plain)
                 .scrollContentBackground(.hidden)
                 #if os(iOS)
                 .environment(\.editMode, .constant(sorting ? .active : .inactive))
                 #endif
                 .disabled(store.isEditingPlaylists || store.isManaging)
-                .navigationTitle(playlist.name)
-                #if os(iOS)
-                .navigationBarTitleDisplayMode(.inline)
-                #endif
-                .toolbar {
-                    ToolbarItem(placement: .automatic) {
-                        Button("添加歌曲", systemImage: "plus") { adding = true }.disabled(store.isBusy).accessibilityIdentifier("addPlaylistSongs")
-                    }
-                    ToolbarItem(placement: .automatic) {
-                        if sorting {
-                            Button("完成排序") { sorting = false }.accessibilityIdentifier("finishPlaylistSorting")
-                        } else {
-                            Menu {
-                                Button("重命名", systemImage: "pencil") { renaming = true }
-                                #if os(iOS)
-                                Button("调整顺序", systemImage: "arrow.up.arrow.down") { sorting = true }.disabled(tracks.count < 2)
-                                #endif
-                                Button("下一首播放", systemImage: "text.line.first.and.arrowtriangle.forward") { store.insertNext(tracks) }.disabled(tracks.isEmpty)
-                                Button("稍后播放", systemImage: "text.badge.plus") { store.appendToQueue(tracks) }.disabled(tracks.isEmpty)
-                                Divider()
-                                Button("删除歌单", systemImage: "trash", role: .destructive) { deleting = true }
-                            } label: { Label("歌单操作", systemImage: "ellipsis.circle") }
-                            .disabled(store.isBusy).accessibilityIdentifier("playlistActions")
-                        }
-                    }
-                }
                 .sheet(isPresented: $renaming) { PlaylistNameForm(playlistID: playlistID, name: playlist.name) }
                 .sheet(isPresented: $adding) { PlaylistTrackPicker(playlistID: playlistID) }
             } else {
-                ContentUnavailableView("歌单已移除", systemImage: "music.note.list")
+                StudioEmptyState(symbol: "music.note.list", title: "歌单已移除", detail: "返回音乐库，查看其他歌单。")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .background(Sunset.background(scheme)).tint(Sunset.accent(scheme)).playlistError($error)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(Sunset.background(scheme).ignoresSafeArea()).tint(Sunset.accent(scheme)).playlistError($error)
+        .navigationBarBackButtonHidden(true)
+        #if os(iOS)
+        .toolbar(.hidden, for: .navigationBar)
+        #endif
         .onChange(of: tracks.isEmpty) { _, empty in if empty { sorting = false } }
         .confirmationDialog("删除歌单？", isPresented: $deleting, titleVisibility: .visible) {
             Button("删除歌单", role: .destructive) { perform { try await store.deletePlaylist(playlistID); dismiss() } }
         } message: { Text("只删除歌单及其中的排列记录，音乐库文件和当前播放队列会保留。") }
     }
-    private var playbackActions: some View {
-        let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: 10)) : AnyLayout(HStackLayout(spacing: 10))
+    private var editingActions: some View {
+        HStack(spacing: 12) {
+            Button("添加歌曲", systemImage: "plus") { adding = true }
+                .buttonStyle(StudioButtonStyle()).disabled(store.isBusy)
+            Spacer(minLength: 8)
+            if sorting {
+                Button("完成排序") { sorting = false }.buttonStyle(StudioButtonStyle())
+            } else {
+                Menu {
+                    Button("重命名", systemImage: "pencil") { renaming = true }
+                    #if os(iOS)
+                    Button("调整顺序", systemImage: "arrow.up.arrow.down") { sorting = true }.disabled(tracks.count < 2)
+                    #endif
+                    Button("下一首播放", systemImage: "text.line.first.and.arrowtriangle.forward") { store.insertNext(tracks) }.disabled(tracks.isEmpty)
+                    Button("稍后播放", systemImage: "text.badge.plus") { store.appendToQueue(tracks) }.disabled(tracks.isEmpty)
+                    Divider()
+                    Button("删除歌单", systemImage: "trash", role: .destructive) { deleting = true }
+                } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44).contentShape(Rectangle()) }
+                .menuStyle(.borderlessButton).menuIndicator(.hidden).frame(width: 44)
+                .accessibilityLabel("歌单操作").disabled(store.isBusy)
+            }
+        }
+    }
+
+    private func playlistHeading(_ playlist: Playlist) -> some View {
+        let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 24)) : AnyLayout(HStackLayout(alignment: .center, spacing: 24))
         return layout {
-            Button { store.playPlaylist(playlistID) } label: {
-                Label("播放全部", systemImage: "play.fill")
-                    .frame(maxWidth: .infinity, minHeight: 44)
-                    .padding(.horizontal, 12)
-                    .foregroundStyle(.white)
-                    .background(Sunset.coral, in: RoundedRectangle(cornerRadius: 12))
-            }.accessibilityIdentifier("playPlaylist")
-            Button { store.playPlaylist(playlistID, shuffled: true) } label: {
-                Label("随机播放", systemImage: "shuffle")
-                    .frame(maxWidth: .infinity, minHeight: 44)
-                    .padding(.horizontal, 12)
-                    .foregroundStyle(Sunset.accent(scheme))
-                    .background(Sunset.accent(scheme).opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
-            }.accessibilityIdentifier("shufflePlaylist")
+            PlaylistArtwork(tracks: Array(tracks.prefix(4)))
+                #if os(macOS)
+                .frame(width: 172, height: 172)
+                #else
+                .frame(width: 128, height: 128)
+                #endif
+                .padding(7)
+                .background(Sunset.elevated(scheme), in: RoundedRectangle(cornerRadius: 5))
+                .overlay { RoundedRectangle(cornerRadius: 5).stroke(Sunset.stroke(scheme), lineWidth: 1) }
+                .shadow(color: .black.opacity(0.08), radius: 12, y: 6)
+            VStack(alignment: .leading, spacing: 10) {
+                Text("私人选集").font(.caption).foregroundStyle(Sunset.accent(scheme))
+                Text(playlist.name).font(.system(.title, design: .serif).weight(.medium))
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("\(tracks.count) 首 · \(playlistDuration(tracks))").font(.subheadline).foregroundStyle(Sunset.secondary(scheme))
+            }.frame(maxWidth: .infinity, alignment: .leading)
+        }.padding(.vertical, 20)
+    }
+
+    private var playbackActions: some View {
+        let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))
+        return layout {
+            Button { store.playPlaylist(playlistID) } label: { Label("播放全部", systemImage: "play.fill") }
+                .buttonStyle(StudioButtonStyle(prominent: true))
+            Button { store.playPlaylist(playlistID, shuffled: true) } label: { Label("随机播放", systemImage: "shuffle") }
+                .buttonStyle(StudioButtonStyle())
         }
         .font(.subheadline.weight(.semibold))
-        .buttonStyle(.plain)
         .disabled(tracks.isEmpty || store.isManaging)
-        .opacity(tracks.isEmpty || store.isManaging ? 0.5 : 1)
     }
     private func songRow(_ track: Track) -> some View {
         HStack(spacing: 12) {
@@ -316,7 +378,7 @@ struct PlaylistDetailView: View {
                     Spacer(minLength: 0)
                     if !typeSize.isAccessibilitySize { Text(playbackTime(track.duration)).font(.caption.monospacedDigit()).foregroundStyle(.secondary) }
                 }.contentShape(Rectangle())
-            }.buttonStyle(.plain).accessibilityLabel("歌单播放 \(track.title)").accessibilityIdentifier("playlistTrack-\(track.id)")
+            }.buttonStyle(.plain).accessibilityLabel("歌单播放 \(track.title)")
             Menu {
                 if let index = tracks.firstIndex(where: { $0.id == track.id }) {
                     Button("上移", systemImage: "arrow.up") { move(index, to: index - 1) }.disabled(index == 0)
@@ -327,7 +389,7 @@ struct PlaylistDetailView: View {
                 Button("从歌单移除", systemImage: "minus.circle") { perform { try await store.removeFromPlaylist(playlistID, trackIDs: [track.id]) } }
             } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44) }
             .menuStyle(.borderlessButton).fixedSize().accessibilityLabel("歌单歌曲操作 \(track.title)")
-        }.padding(.vertical, 4).listRowBackground(Sunset.panel(scheme))
+        }.frame(minHeight: 44).padding(.vertical, 4).listRowBackground(Color.clear).listRowSeparatorTint(Sunset.stroke(scheme))
     }
     private func move(_ index: Int, to destination: Int) { perform { try await store.movePlaylistTracks(playlistID, from: IndexSet(integer: index), to: destination) } }
     private func perform(_ action: @escaping @MainActor () async throws -> Void) {
@@ -346,18 +408,31 @@ struct PlaylistTrackPicker: View {
     private var existing: Set<UUID> { Set(store.playlists.first { $0.id == playlistID }?.trackIDs ?? []) }
     private var filtered: [Track] { store.tracks.filter { LibraryPresentation.matches($0, query: query) } }
     var body: some View {
-        NavigationStack {
+        VStack(spacing: 0) {
+            CollectionSheetHeader(title: "选择歌曲", close: { dismiss() })
+                .disabled(store.isEditingPlaylists)
+            HStack(spacing: 10) {
+                Image(systemName: "magnifyingglass").foregroundStyle(Sunset.secondary(scheme)).accessibilityHidden(true)
+                TextField("搜索音乐库", text: $query)
+                    .textFieldStyle(.plain).autocorrectionDisabled().submitLabel(.search)
+                    .accessibilityLabel("搜索音乐库")
+                if !query.isEmpty {
+                    Button { query = "" } label: { Image(systemName: "xmark.circle.fill").frame(width: 44, height: 44) }
+                        .buttonStyle(.plain).foregroundStyle(Sunset.secondary(scheme)).accessibilityLabel("清除搜索")
+                }
+            }
+            .padding(.leading, 14).padding(.trailing, query.isEmpty ? 14 : 0).frame(minHeight: 44)
+            .background(Sunset.panel(scheme), in: RoundedRectangle(cornerRadius: 6))
+            .padding(.horizontal, 24).padding(.bottom, 12)
             List {
                 if store.tracks.isEmpty {
-                    ContentUnavailableView("音乐库还没有歌曲", systemImage: "music.note", description: Text("先回到音乐库导入音乐，再将歌曲添加到歌单。"))
+                    StudioEmptyState(symbol: "music.note", title: "音乐库还没有歌曲", detail: "先回到音乐库导入音乐，再将歌曲添加到歌单。")
+                        .frame(maxWidth: .infinity).padding(.vertical, 24)
                 } else if filtered.isEmpty {
-                    ContentUnavailableView {
-                        Label("没有找到歌曲", systemImage: "magnifyingglass")
-                    } description: {
-                        Text("没有与“\(query)”匹配的歌曲，试试歌曲、艺术家或专辑名称。")
-                    } actions: {
-                        Button("清除搜索") { query = "" }
-                    }
+                    VStack(spacing: 16) {
+                        StudioEmptyState(symbol: "magnifyingglass", title: "没有找到歌曲", detail: "没有与“\(query)”匹配的歌曲，试试歌曲、艺术家或专辑名称。")
+                        Button("清除搜索") { query = "" }.buttonStyle(StudioButtonStyle())
+                    }.frame(maxWidth: .infinity).padding(.vertical, 24)
                 } else if filtered.allSatisfy({ existing.contains($0.id) }) {
                     Text(query.isEmpty ? "音乐库中的歌曲已全部加入这个歌单。" : "这些搜索结果已在歌单中。")
                         .font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -381,25 +456,29 @@ struct PlaylistTrackPicker: View {
                     .buttonStyle(.plain).disabled(existing.contains(track.id) || store.isBusy)
                     .accessibilityLabel("添加歌曲 \(track.title)")
                     .accessibilityValue(existing.contains(track.id) ? "已添加到歌单" : selected.contains(track.id) ? "已选择" : "未选择")
+                    .listRowBackground(Color.clear)
                 }
             }
-            .searchable(text: $query, prompt: "搜索音乐库")
-            .scrollContentBackground(.hidden).background(Sunset.background(scheme)).navigationTitle("选择歌曲")
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            #endif
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() }.disabled(store.isEditingPlaylists) }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("添加 \(selected.count) 首") {
-                        Task {
-                            do { try await store.addToPlaylist(playlistID, tracks: store.tracks.filter { selected.contains($0.id) }); dismiss() }
-                            catch { self.error = error.localizedDescription }
-                        }
-                    }.disabled(selected.isEmpty || store.isBusy).accessibilityIdentifier("confirmAddPlaylistSongs")
-                }
-            }
-        }.tint(Sunset.accent(scheme)).playlistError($error).interactiveDismissDisabled(store.isEditingPlaylists)
+            .listStyle(.plain)
+            .scrollDismissesKeyboard(.interactively)
+            .scrollContentBackground(.hidden)
+            HStack(spacing: 12) {
+                Button("取消") { dismiss() }.buttonStyle(StudioButtonStyle())
+                    .disabled(store.isEditingPlaylists)
+                Spacer(minLength: 8)
+                Button("添加 \(selected.count) 首") {
+                    Task {
+                        do { try await store.addToPlaylist(playlistID, tracks: store.tracks.filter { selected.contains($0.id) }); dismiss() }
+                        catch { self.error = error.localizedDescription }
+                    }
+                }.buttonStyle(StudioButtonStyle(prominent: true))
+                    .keyboardShortcut(.defaultAction).disabled(selected.isEmpty || store.isBusy)
+            }.padding(.horizontal, 24).padding(.vertical, 20)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(Sunset.background(scheme).ignoresSafeArea())
+        .tint(Sunset.accent(scheme)).playlistError($error).interactiveDismissDisabled(store.isEditingPlaylists)
+        .collectionSheetChrome()
         #if os(macOS)
         .frame(width: 580, height: 620)
         #endif

@@ -2,14 +2,7 @@ import Foundation
 
 /// The phone and CarPlay join one startup task and one player, including cold launch.
 @MainActor final class AppSession {
-    static let shared: AppSession = {
-        #if DEBUG
-        if UITestFixture.enabled {
-            return AppSession(store: UITestFixture.makeStore(), prepare: { try await UITestFixture.seed($0.repository) })
-        }
-        #endif
-        return AppSession(store: PlayerStore())
-    }()
+    static let shared = AppSession(store: PlayerStore())
     let store: PlayerStore
     private let prepare: (@MainActor (PlayerStore) async throws -> Void)?
     private var startup: Task<Void, Never>?

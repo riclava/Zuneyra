@@ -11,63 +11,66 @@ struct NowPlayingView: View {
 
     var body: some View {
         NavigationStack {
-            GeometryReader { geometry in
-                ScrollView {
-                    if let track = store.current {
-                        VStack(spacing: 24) {
-                            CoverArt(track: track, repository: store.repository)
-                                .frame(maxWidth: typeSize.isAccessibilitySize ? 140 : min(300, max(140, geometry.size.height * 0.34)))
-                                .shadow(color: .black.opacity(scheme == .dark ? 0.2 : 0.08), radius: 20, y: 10)
-                                .accessibilityHidden(true)
+            VStack(spacing: 0) {
+                CollectionSheetHeader(title: "正在聆听", close: { dismiss() })
+                GeometryReader { geometry in
+                    ScrollView {
+                        if let track = store.current {
+                            VStack(spacing: 18) {
+                                CoverArt(track: track, repository: store.repository, cornerRadius: 4)
+                                    .frame(maxWidth: typeSize.isAccessibilitySize ? 120 : min(260, max(120, geometry.size.height * 0.32)))
+                                    .shadow(color: .black.opacity(scheme == .dark ? 0.25 : 0.12), radius: 16, x: 0, y: 9)
+                                    .accessibilityHidden(true)
 
-                            trackDetails(track)
-                            PlaybackTimeline(track: track).id(track.id)
-                            transportControls
-                            PlaybackModesView()
-                            queueLink
-                            outputDetails(track)
+                                trackDetails(track)
+                                VStack(spacing: 12) {
+                                    PlaybackTimeline(track: track).id(track.id)
+                                    transportControls
+                                    PlaybackModesView()
+                                }
+                                VStack(spacing: 10) {
+                                    Rectangle().fill(Sunset.stroke(scheme)).frame(height: 1)
+                                    queueLink
+                                    outputDetails(track)
+                                }
+                            }
+                            .padding(.horizontal, 28).padding(.top, 4).padding(.bottom, 24)
+                            .frame(maxWidth: 460)
+                            .frame(maxWidth: .infinity)
+                        } else {
+                            StudioEmptyState(symbol: "play.square", title: "尚未播放", detail: "从音乐库选择一首歌曲，开始聆听。")
+                                .frame(maxWidth: .infinity, minHeight: geometry.size.height)
                         }
-                        .padding(24)
-                        .frame(maxWidth: 460)
-                        .frame(maxWidth: .infinity)
-                    } else {
-                        ContentUnavailableView("还没有正在播放的音乐", systemImage: "music.note", description: Text("从音乐库选择一首歌曲，开始聆听。"))
                     }
                 }
             }
-            .background(Sunset.background(scheme))
-            .navigationTitle("正在播放")
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            #endif
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("完成") { dismiss() }
-                }
-            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .background(Sunset.background(scheme).ignoresSafeArea())
+            .collectionSheetChrome()
         }
         .tint(Sunset.accent(scheme))
         #if os(macOS)
-        .frame(width: 480, height: 760)
+        .frame(width: 480)
+        .frame(minHeight: 480, idealHeight: 640, maxHeight: 700)
         #endif
     }
 
     private func trackDetails(_ track: Track) -> some View {
         HStack(alignment: .top, spacing: 16) {
-            VStack(alignment: .leading, spacing: 7) {
+            VStack(alignment: .leading, spacing: 8) {
                 Text(track.title)
-                    .font(.title2.bold())
+                    .font(.system(.title2, design: .serif).weight(.semibold))
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityAddTraits(.isHeader)
-                Text(track.artist).font(.body).foregroundStyle(.secondary)
-                Text(track.album).font(.subheadline).foregroundStyle(.secondary)
+                Text(track.artist).font(.subheadline).foregroundStyle(Sunset.secondary(scheme))
+                Text(track.album).font(.caption).foregroundStyle(Sunset.secondary(scheme))
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             Button { store.toggleFavorite(track) } label: {
                 Image(systemName: track.favorite ? "heart.fill" : "heart")
-                    .font(.title3)
-                    .frame(width: 48, height: 48)
-                    .background(Sunset.panel(scheme), in: Circle())
+                    .font(.body)
+                    .frame(width: 44, height: 44)
+                    .background(track.favorite ? Sunset.accent(scheme).opacity(0.10) : .clear, in: Circle())
             }
             .buttonStyle(.plain)
             .foregroundStyle(Sunset.accent(scheme))
@@ -78,20 +81,19 @@ struct NowPlayingView: View {
     }
 
     private var transportControls: some View {
-        HStack(spacing: 36) {
+        HStack(spacing: 32) {
             Button { store.previous() } label: {
-                Image(systemName: "backward.end.fill").font(.title2).frame(width: 56, height: 64)
+                Image(systemName: "backward.end.fill").font(.title3).frame(width: 56, height: 56)
             }.accessibilityLabel("上一首")
             Button { store.toggle() } label: {
                 Image(systemName: store.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.title.weight(.semibold))
-                    .frame(width: 76, height: 76)
-                    .background(Sunset.coral, in: Circle())
-                    .foregroundStyle(.white)
+                    .font(.title2.weight(.semibold))
+                    .frame(width: 68, height: 68)
+                    .background(Sunset.brand, in: Circle())
+                    .foregroundStyle(Sunset.paper)
             }.accessibilityLabel(store.isPlaying ? "暂停" : "播放")
-                .accessibilityIdentifier("playerTransportToggle")
             Button { store.next() } label: {
-                Image(systemName: "forward.end.fill").font(.title2).frame(width: 56, height: 64)
+                Image(systemName: "forward.end.fill").font(.title3).frame(width: 56, height: 56)
             }.accessibilityLabel("下一首")
         }
         .buttonStyle(.plain)
@@ -100,23 +102,19 @@ struct NowPlayingView: View {
 
     private var queueLink: some View {
         NavigationLink { PlaybackQueueView(showsClose: false) } label: {
-            HStack(spacing: 12) {
-                Image(systemName: "list.bullet").font(.title3)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("播放队列").font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
-                    Text(store.queueState.upcoming.isEmpty ? "没有待播歌曲" : "接下来还有 \(store.queueState.upcoming.count) 首")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            HStack(spacing: 10) {
+                Image(systemName: "list.bullet").font(.subheadline)
+                Text("播放队列").font(.subheadline.weight(.medium))
+                Spacer(minLength: 4)
+                Text("\(store.queueState.upcoming.count) 首待播")
+                    .font(.caption.monospacedDigit()).foregroundStyle(Sunset.secondary(scheme))
+                Image(systemName: "chevron.right").font(.caption2.weight(.semibold)).foregroundStyle(Sunset.secondary(scheme))
             }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Sunset.panel(scheme), in: RoundedRectangle(cornerRadius: 16))
+            .padding(.horizontal, 2)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityIdentifier("playerQueue")
     }
 
     private func outputDetails(_ track: Track) -> some View {
@@ -135,22 +133,20 @@ struct NowPlayingView: View {
 
     private func fileFormat(_ track: Track) -> some View {
         Text(track.filename.components(separatedBy: ".").last?.uppercased() ?? "AUDIO")
-            .font(.caption.monospaced().weight(.medium))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 10).padding(.vertical, 6)
-            .background(Sunset.panel(scheme), in: Capsule())
+            .font(.caption2.weight(.medium)).tracking(1.2)
+            .foregroundStyle(Sunset.secondary(scheme))
             .accessibilityLabel("音频格式 \(track.filename.components(separatedBy: ".").last?.uppercased() ?? "AUDIO")")
     }
 
     @ViewBuilder private var audioOutput: some View {
         #if os(iOS)
         HStack(spacing: 4) {
-            Text("音频输出").font(.subheadline).foregroundStyle(.secondary)
+            Text("音频输出").font(.caption).foregroundStyle(Sunset.secondary(scheme))
                 .accessibilityHidden(true)
             AudioOutputPicker().frame(width: 48, height: 48)
         }
         #else
-        Label("本机播放", systemImage: "speaker.wave.2").font(.caption).foregroundStyle(.secondary)
+        Label("本机播放", systemImage: "speaker.wave.2").font(.caption).foregroundStyle(Sunset.secondary(scheme))
         #endif
     }
 }
@@ -158,6 +154,7 @@ struct NowPlayingView: View {
 /// Preview changes while dragging; only send the final position to the playback engine.
 struct PlaybackTimeline: View {
     @Environment(PlayerStore.self) private var store
+    @Environment(\.colorScheme) private var scheme
     let track: Track
     @State private var preview: Double?
     private var duration: Double { track.duration.isFinite ? max(0, track.duration) : 0 }
@@ -186,12 +183,12 @@ struct PlaybackTimeline: View {
                 preview = nil
             }
             HStack {
-                Text(playbackTime(position)).accessibilityIdentifier("playbackElapsed")
+                Text(playbackTime(position))
                 Spacer()
                 Text("−" + playbackTime(duration - position)).accessibilityLabel("剩余 \(playbackTime(duration - position))")
             }
-            .font(.caption.monospacedDigit())
-            .foregroundStyle(.secondary)
+            .font(.caption2.monospacedDigit())
+            .foregroundStyle(Sunset.secondary(scheme))
         }
     }
 }

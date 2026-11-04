@@ -14,19 +14,11 @@
 			remoteGlobalIDString = 9D07FDB9309AF3C2004C02AA;
 			remoteInfo = Zuneyra;
 		};
-		9D07FDD2309AF3C3004C02AA /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 9D07FDB2309AF3C2004C02AA /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 9D07FDB9309AF3C2004C02AA;
-			remoteInfo = Zuneyra;
-		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		9D07FDBA309AF3C2004C02AA /* Zuneyra.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Zuneyra.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		9D07FDC7309AF3C3004C02AA /* ZuneyraTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ZuneyraTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		9D07FDD1309AF3C3004C02AA /* ZuneyraUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ZuneyraUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -38,11 +30,6 @@
 		9D07FDCA309AF3C3004C02AA /* ZuneyraTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = ZuneyraTests;
-			sourceTree = "<group>";
-		};
-		9D07FDD4309AF3C3004C02AA /* ZuneyraUITests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = ZuneyraUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -62,13 +49,6 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		9D07FDCE309AF3C3004C02AA /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -77,7 +57,6 @@
 			children = (
 				9D07FDBC309AF3C2004C02AA /* Zuneyra */,
 				9D07FDCA309AF3C3004C02AA /* ZuneyraTests */,
-				9D07FDD4309AF3C3004C02AA /* ZuneyraUITests */,
 				9D07FDBB309AF3C2004C02AA /* Products */,
 			);
 			sourceTree = "<group>";
@@ -87,7 +66,6 @@
 			children = (
 				9D07FDBA309AF3C2004C02AA /* Zuneyra.app */,
 				9D07FDC7309AF3C3004C02AA /* ZuneyraTests.xctest */,
-				9D07FDD1309AF3C3004C02AA /* ZuneyraUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -140,29 +118,6 @@
 			productReference = 9D07FDC7309AF3C3004C02AA /* ZuneyraTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
-		9D07FDD0309AF3C3004C02AA /* ZuneyraUITests */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 9D07FDE1309AF3C3004C02AA /* Build configuration list for PBXNativeTarget "ZuneyraUITests" */;
-			buildPhases = (
-				9D07FDCD309AF3C3004C02AA /* Sources */,
-				9D07FDCE309AF3C3004C02AA /* Frameworks */,
-				9D07FDCF309AF3C3004C02AA /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				9D07FDD3309AF3C3004C02AA /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				9D07FDD4309AF3C3004C02AA /* ZuneyraUITests */,
-			);
-			name = ZuneyraUITests;
-			packageProductDependencies = (
-			);
-			productName = ZuneyraUITests;
-			productReference = 9D07FDD1309AF3C3004C02AA /* ZuneyraUITests.xctest */;
-			productType = "com.apple.product-type.bundle.ui-testing";
-		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -177,10 +132,6 @@
 						CreatedOnToolsVersion = 26.6;
 					};
 					9D07FDC6309AF3C3004C02AA = {
-						CreatedOnToolsVersion = 26.6;
-						TestTargetID = 9D07FDB9309AF3C2004C02AA;
-					};
-					9D07FDD0309AF3C3004C02AA = {
 						CreatedOnToolsVersion = 26.6;
 						TestTargetID = 9D07FDB9309AF3C2004C02AA;
 					};
@@ -202,7 +153,6 @@
 			targets = (
 				9D07FDB9309AF3C2004C02AA /* Zuneyra */,
 				9D07FDC6309AF3C3004C02AA /* ZuneyraTests */,
-				9D07FDD0309AF3C3004C02AA /* ZuneyraUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -216,13 +166,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		9D07FDC5309AF3C3004C02AA /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		9D07FDCF309AF3C3004C02AA /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -246,13 +189,6 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		9D07FDCD309AF3C3004C02AA /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -260,11 +196,6 @@
 			isa = PBXTargetDependency;
 			target = 9D07FDB9309AF3C2004C02AA /* Zuneyra */;
 			targetProxy = 9D07FDC8309AF3C3004C02AA /* PBXContainerItemProxy */;
-		};
-		9D07FDD3309AF3C3004C02AA /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 9D07FDB9309AF3C2004C02AA /* Zuneyra */;
-			targetProxy = 9D07FDD2309AF3C3004C02AA /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -334,26 +265,6 @@
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
 			name = "CarPlay Debug";
-		};
-		7BDFB13371DA19E9FF6F5683 /* CarPlay Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 698L694DS6;
-				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.hyperits.app.ZuneyraUITests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				STRING_CATALOG_GENERATE_SYMBOLS = NO;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = Zuneyra;
-			};
-			name = "CarPlay Release";
 		};
 		9D07FDD9309AF3C3004C02AA /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -606,66 +517,6 @@
 			};
 			name = Release;
 		};
-		9D07FDE2309AF3C3004C02AA /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 698L694DS6;
-				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.hyperits.app.ZuneyraUITests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				STRING_CATALOG_GENERATE_SYMBOLS = NO;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = Zuneyra;
-			};
-			name = Debug;
-		};
-		9D07FDE3309AF3C3004C02AA /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 698L694DS6;
-				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.hyperits.app.ZuneyraUITests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				STRING_CATALOG_GENERATE_SYMBOLS = NO;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = Zuneyra;
-			};
-			name = Release;
-		};
-		A2F45B6D7AEB0412B750B347 /* CarPlay Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 698L694DS6;
-				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.hyperits.app.ZuneyraUITests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				STRING_CATALOG_GENERATE_SYMBOLS = NO;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = Zuneyra;
-			};
-			name = "CarPlay Debug";
-		};
 		A65DC188BD9725F41A459F91 /* CarPlay Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -885,17 +736,6 @@
 				B76219540618C8DD20DA9869 /* CarPlay Debug */,
 				9D07FDE0309AF3C3004C02AA /* Release */,
 				A65DC188BD9725F41A459F91 /* CarPlay Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		9D07FDE1309AF3C3004C02AA /* Build configuration list for PBXNativeTarget "ZuneyraUITests" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				9D07FDE2309AF3C3004C02AA /* Debug */,
-				A2F45B6D7AEB0412B750B347 /* CarPlay Debug */,
-				9D07FDE3309AF3C3004C02AA /* Release */,
-				7BDFB13371DA19E9FF6F5683 /* CarPlay Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

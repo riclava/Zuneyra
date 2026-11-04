@@ -12,9 +12,6 @@
       <TestableReference skipped="NO">
         <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="9D07FDC6309AF3C3004C02AA" BuildableName="ZuneyraTests.xctest" BlueprintName="ZuneyraTests" ReferencedContainer="container:Zuneyra.xcodeproj" />
       </TestableReference>
-      <TestableReference skipped="NO">
-        <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="9D07FDD0309AF3C3004C02AA" BuildableName="ZuneyraUITests.xctest" BlueprintName="ZuneyraUITests" ReferencedContainer="container:Zuneyra.xcodeproj" />
-      </TestableReference>
     </Testables>
   </TestAction>
   <LaunchAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB" launchStyle="0" useCustomWorkingDirectory="NO" ignoresPersistentStateOnLaunch="NO" debugDocumentVersioning="YES" debugServiceExtension="internal" allowLocationSimulation="YES">

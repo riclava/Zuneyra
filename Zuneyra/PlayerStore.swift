@@ -74,9 +74,6 @@ final class PlayerStore {
                 let checkpoint = Int(self.position) / 5
                 if checkpoint != self.lastCheckpoint {
                     self.lastCheckpoint = checkpoint; self.saveSession()
-                    #if DEBUG && os(iOS)
-                    DevicePlaybackCheck.record("checkpoint", store: self)
-                    #endif
                 }
             }
         }
@@ -85,9 +82,6 @@ final class PlayerStore {
                 guard let self else { return }
                 self.isPlaying = self.player.timeControlStatus == .playing
                 self.updateNowPlaying()
-                #if DEBUG && os(iOS)
-                DevicePlaybackCheck.record("playback-state", store: self)
-                #endif
             }
         }
         resources.notifications.append(NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: nil, queue: .main) { [weak self] note in
@@ -103,9 +97,6 @@ final class PlayerStore {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 if reason == AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue { self.pause() }
-                #if DEBUG
-                DevicePlaybackCheck.record("route-change-\(reason ?? 0)", store: self)
-                #endif
             }
         })
         resources.notifications.append(NotificationCenter.default.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] note in
@@ -119,9 +110,6 @@ final class PlayerStore {
                 } else if self.resumeAfterInterruption && AVAudioSession.InterruptionOptions(rawValue: options).contains(.shouldResume) {
                     self.resumeAfterInterruption = false; self.resume()
                 }
-                #if DEBUG
-                DevicePlaybackCheck.record("interruption-\(type ?? 0)", store: self)
-                #endif
             }
         })
         #endif
@@ -467,9 +455,6 @@ final class PlayerStore {
         wantsPlayback = false; resumeAfterInterruption = false; player.pause(); isPlaying = false; saveSession(); updateNowPlaying()
         #if os(iOS)
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-        #endif
-        #if DEBUG && os(iOS)
-        DevicePlaybackCheck.record("pause", store: self)
         #endif
     }
     func seek(to seconds: Double) {

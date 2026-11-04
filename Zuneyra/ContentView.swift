@@ -7,6 +7,7 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var section: LibrarySection = .albums
+    @State private var navigationGeneration = 0
     @State private var query = ""
     @State private var songSort: LibrarySongSort = .recent
     @FocusState private var searchFocused: Bool
@@ -47,26 +48,22 @@ struct ContentView: View {
             .sorted { $0[0].albumKey.localizedStandardCompare($1[0].albumKey) == .orderedAscending }
     }
     private var gridColumns: [GridItem] {
-        [GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 240 : 145, maximum: 300), spacing: 20)]
+        #if os(macOS)
+        [GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 260 : 190, maximum: 300), spacing: 26)]
+        #else
+        [GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 250 : 145, maximum: 280), spacing: 20)]
+        #endif
     }
 
     var body: some View {
         @Bindable var store = store
         Group {
             #if os(macOS)
-            NavigationSplitView {
-                VStack(alignment: .leading, spacing: 25) {
-                    Label("Zuneyra", systemImage: "waveform").font(.system(size: 24, weight: .heavy)).foregroundStyle(Sunset.accent(scheme)).padding(.horizontal, 12).padding(.top, 22)
-                    Text("音乐库").font(.caption).foregroundStyle(.secondary).padding(.horizontal, 12)
-                    ForEach(LibrarySection.allCases) { item in
-                        Button { switchSection(item) } label: {
-                            Label(item.rawValue, systemImage: item.icon).frame(maxWidth: .infinity, alignment: .leading).padding(10).background(section == item ? Sunset.coral : .clear, in: RoundedRectangle(cornerRadius: 8)).foregroundStyle(section == item ? .white : .primary)
-                        }.buttonStyle(.plain)
-                    }
-                    Spacer()
-                    Label("音乐已保存在本机", systemImage: "internaldrive").font(.caption).foregroundStyle(.secondary).padding(12)
-                }.padding(12).background(Sunset.panel(scheme)).navigationSplitViewColumnWidth(min: 170, ideal: 205, max: 250)
-            } detail: { navigationContent }
+            HStack(spacing: 0) {
+                sidebar.frame(width: 210)
+                Rectangle().fill(Sunset.stroke(scheme)).frame(width: 1)
+                navigationContent
+            }
             #else
             navigationContent
             #endif
@@ -121,6 +118,7 @@ struct ContentView: View {
     private var navigationContent: some View {
         NavigationStack {
             VStack(spacing: 0) {
+                workspaceBar
                 searchField
                 #if os(iOS)
                 sectionPicker
@@ -139,8 +137,8 @@ struct ContentView: View {
                             }
                         }
                         .id("libraryTop")
-                        .padding(.horizontal, 20).padding(.top, 20).padding(.bottom, 24)
-                        .frame(maxWidth: 1100, alignment: .leading).frame(maxWidth: .infinity)
+                        .padding(.horizontal, 24).padding(.top, 22).padding(.bottom, 24)
+                        .frame(maxWidth: 1100, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .scrollDismissesKeyboard(.interactively)
                     .onChange(of: section) { _, _ in scroll.scrollTo("libraryTop", anchor: .top) }
@@ -148,36 +146,89 @@ struct ContentView: View {
                 }
             }
             .background(Sunset.background(scheme))
-            .navigationTitle("Zuneyra")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .navigationBar)
             #endif
-            .toolbar {
-                ToolbarItem(placement: .automatic) {
-                    Button("播放队列", systemImage: "list.bullet") { showingQueue = true }
-                        .accessibilityIdentifier("queueToolbar")
+        }.id(navigationGeneration)
+    }
+
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                StudioMark().foregroundStyle(Sunset.accent(scheme))
+                Text("Zuneyra").font(.system(size: 27, weight: .medium, design: .serif)).tracking(-1)
+            }.padding(.horizontal, 16).padding(.top, 23).padding(.bottom, 30)
+            Text("PRIVATE COLLECTION").font(.system(size: 9, weight: .medium)).tracking(1.8).foregroundStyle(Sunset.secondary(scheme))
+                .padding(.horizontal, 22).padding(.bottom, 18)
+            VStack(spacing: 4) {
+                ForEach(LibrarySection.allCases) { item in
+                    Button { switchSection(item) } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: item.icon).font(.system(size: 14)).frame(width: 20)
+                            Text(item.rawValue).font(.system(size: 14, weight: section == item ? .medium : .regular))
+                            Spacer(minLength: 4)
+                            Text(sectionCount(item)).font(.system(size: 10, design: .monospaced))
+                                .foregroundStyle(Sunset.secondary(scheme))
+                        }.padding(.horizontal, 12).frame(height: 43)
+                            .foregroundStyle(section == item ? Sunset.accent(scheme) : .primary)
+                            .background(section == item ? Sunset.accent(scheme).opacity(0.09) : .clear, in: RoundedRectangle(cornerRadius: 5))
+                            .overlay(alignment: .leading) {
+                                if section == item { Circle().fill(Sunset.accent(scheme)).frame(width: 4, height: 4) }
+                            }
+                            .contentShape(Rectangle())
+                    }.buttonStyle(.plain).accessibilityAddTraits(section == item ? .isSelected : [])
                 }
-                ToolbarItem(placement: .automatic) {
-                    Button("音乐库管理", systemImage: "internaldrive") { managementTab = 0; showingManagement = true }
-                        .accessibilityIdentifier("libraryManagement")
-                }
-                ToolbarItem(placement: .primaryAction) {
-                    #if os(iOS)
-                    Menu {
-                        Button("选择文件或文件夹", systemImage: "folder") { importing = true }
-                        Button("导入电脑传入的音乐", systemImage: "cable.connector") { store.scanSharedDocuments() }
-                    } label: { Label("导入音乐", systemImage: "plus") }
-                    .disabled(store.isBusy).accessibilityIdentifier("importMusic")
-                    #else
-                    Button("导入音乐", systemImage: "plus") { importing = true }
-                        .disabled(store.isBusy).accessibilityIdentifier("importMusic")
-                    #endif
-                }
-            }
+            }.padding(.horizontal, 10)
+            Spacer(minLength: 30)
+            VStack(alignment: .leading, spacing: 10) {
+                Rectangle().fill(Sunset.stroke(scheme)).frame(height: 1)
+                Label("本地音乐 · 离线可用", systemImage: "internaldrive")
+                    .font(.system(size: 11)).foregroundStyle(Sunset.secondary(scheme))
+            }.padding(18)
+        }.frame(maxHeight: .infinity).background(Sunset.panel(scheme))
+    }
+
+    private func sectionCount(_ item: LibrarySection) -> String {
+        switch item {
+        case .albums: return String(Set(store.tracks.map(\.albumKey)).count)
+        case .songs: return String(store.tracks.count)
+        case .artists: return String(Set(store.tracks.map(\.artist)).count)
+        case .favorites: return String(store.tracks.filter(\.favorite).count)
+        case .playlists: return String(store.playlists.count)
         }
     }
 
+    private var workspaceBar: some View {
+        HStack(spacing: 6) {
+            #if os(iOS)
+            StudioMark().foregroundStyle(Sunset.accent(scheme))
+            Text("Zuneyra").font(.system(.title2, design: .serif, weight: .medium)).tracking(-0.5).lineLimit(1)
+            #else
+            Text("你的私人音乐库").font(.system(.subheadline, design: .serif)).foregroundStyle(Sunset.secondary(scheme))
+            #endif
+            Spacer(minLength: 0)
+            Button { showingQueue = true } label: { Image(systemName: "list.bullet") }
+                .buttonStyle(StudioIconButtonStyle()).accessibilityLabel("播放队列").help("播放队列")
+            Button { managementTab = 0; showingManagement = true } label: { Image(systemName: "slider.horizontal.3") }
+                .buttonStyle(StudioIconButtonStyle()).accessibilityLabel("音乐库管理").help("音乐库管理")
+            #if os(iOS)
+            Menu {
+                Button("选择文件或文件夹", systemImage: "folder") { importing = true }
+                Button("导入电脑传入的音乐", systemImage: "cable.connector") { store.scanSharedDocuments() }
+            } label: { Image(systemName: "plus").frame(width: 44, height: 44) }
+                .menuStyle(.borderlessButton).accessibilityLabel("导入音乐").disabled(store.isBusy)
+            #else
+            Button { importing = true } label: { Label("添加音乐", systemImage: "plus") }
+                .buttonStyle(StudioButtonStyle()).disabled(store.isBusy).padding(.leading, 8)
+                .keyboardShortcut("o", modifiers: .command).accessibilityLabel("导入音乐")
+            #endif
+        }.font(.subheadline).padding(.horizontal, 24).padding(.vertical, 10)
+            .background(Sunset.background(scheme))
+    }
+
     private func switchSection(_ item: LibrarySection) {
+        navigationGeneration += 1
         section = item
         selectedAlbum = nil
         selecting = false
@@ -195,35 +246,42 @@ struct ContentView: View {
                 .onSubmit { searchFocused = false }
                 .frame(maxWidth: .infinity)
                 .accessibilityLabel(section == .playlists ? "搜索歌单" : selectedAlbum == nil ? "搜索音乐库" : "搜索此专辑")
-                .accessibilityIdentifier("librarySearchField")
             if !query.isEmpty {
                 Button { query = "" } label: {
                     Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary).frame(width: 44, height: 44)
                 }.buttonStyle(.plain).accessibilityLabel("清除搜索")
             }
         }
-        .padding(.leading, 14).padding(.trailing, query.isEmpty ? 14 : 0).frame(minHeight: 48)
-        .background(Sunset.panel(scheme), in: RoundedRectangle(cornerRadius: 14))
-        .padding(.horizontal, 20).padding(.vertical, 12)
+        .padding(.leading, 12).padding(.trailing, query.isEmpty ? 12 : 0)
+        #if os(macOS)
+        .frame(minHeight: 36)
+        #else
+        .frame(minHeight: 44)
+        #endif
+        .background(Sunset.panel(scheme).opacity(0.6), in: RoundedRectangle(cornerRadius: 10))
+        .overlay { RoundedRectangle(cornerRadius: 10).strokeBorder(searchFocused ? Sunset.accent(scheme) : .clear, lineWidth: 1) }
+        .padding(.horizontal, 24).padding(.top, 16).padding(.bottom, 8)
+        .frame(maxWidth: 1100).frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var sectionPicker: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
+            HStack(spacing: 22) {
                 ForEach(LibrarySection.allCases) { item in
                     Button { switchSection(item) } label: {
                         Text(item == .favorites ? "收藏" : item.rawValue)
                             .font(.subheadline.weight(section == item ? .semibold : .medium))
-                            .fixedSize().padding(.horizontal, 15).frame(minHeight: 44)
-                            .background(section == item ? Sunset.coral : .clear, in: Capsule())
-                            .foregroundStyle(section == item ? .white : .primary)
+                            .fixedSize().frame(minHeight: 44)
+                            .foregroundStyle(section == item ? Sunset.accent(scheme) : Sunset.secondary(scheme))
+                            .overlay(alignment: .bottom) {
+                                if section == item { Rectangle().fill(Sunset.accent(scheme)).frame(height: 2) }
+                            }
                     }
                     .buttonStyle(.plain).accessibilityLabel(item.rawValue)
                     .accessibilityAddTraits(section == item ? .isSelected : [])
                 }
-            }.padding(.horizontal, 20)
-        }.padding(.bottom, 10)
-        .overlay(alignment: .bottom) { Divider().opacity(0.5) }
+            }.padding(.horizontal, 24)
+        }.overlay(alignment: .bottom) { Rectangle().fill(Sunset.stroke(scheme)).frame(height: 1) }
     }
 
     private var importProgress: some View {
@@ -262,11 +320,10 @@ struct ContentView: View {
                     Button("下一首播放") { store.insertNext(selectedTracks) }
                     Button("稍后播放") { store.appendToQueue(selectedTracks) }
                 } label: { Label("更多操作", systemImage: "ellipsis.circle").frame(minHeight: 44) }
-                .disabled(selectedIDs.isEmpty || store.isBusy).accessibilityIdentifier("selectedTracksActions")
+                .disabled(selectedIDs.isEmpty || store.isBusy)
                 Spacer()
                 Button("删除", systemImage: "trash", role: .destructive) { beginDeletion(selectedIDs) }
                     .frame(minHeight: 44).disabled(selectedIDs.isEmpty || store.isBusy)
-                    .accessibilityIdentifier("deleteSelectedTracks")
                 Button("完成") { selecting = false; selectedIDs.removeAll() }.frame(minHeight: 44)
             }.font(.subheadline)
         }.padding(.horizontal, 20).background(Sunset.panel(scheme))
@@ -288,11 +345,13 @@ struct ContentView: View {
             if let album = albumContents.first {
                 ViewThatFits(in: .horizontal) {
                     HStack(alignment: .center, spacing: 20) {
-                        CoverArt(track: album, repository: store.repository).frame(width: 104, height: 104).accessibilityHidden(true)
-                        albumHeading(album)
+                        CoverArt(track: album, repository: store.repository).frame(width: 220, height: 220)
+                            .shadow(color: .black.opacity(0.12), radius: 12, x: 0, y: 6).accessibilityHidden(true)
+                        albumHeading(album).frame(minWidth: 250)
                     }
                     VStack(alignment: .leading, spacing: 16) {
-                        CoverArt(track: album, repository: store.repository).frame(width: 140, height: 140).accessibilityHidden(true)
+                        CoverArt(track: album, repository: store.repository).frame(width: 200, height: 200)
+                            .shadow(color: .black.opacity(0.12), radius: 12, x: 0, y: 6).frame(maxWidth: .infinity).accessibilityHidden(true)
                         albumHeading(album)
                     }
                 }
@@ -300,8 +359,8 @@ struct ContentView: View {
                 let layout = dynamicTypeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8)) : AnyLayout(HStackLayout(alignment: .center))
                 layout {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(searchTerm.isEmpty ? section.rawValue : "搜索结果").font(.largeTitle.bold())
-                        Text(librarySummary).font(.subheadline).foregroundStyle(.secondary)
+                        Text(searchTerm.isEmpty ? collectionTitle : "搜索结果").font(.system(.largeTitle, design: .serif, weight: .medium)).tracking(-0.5)
+                        Text(librarySummary).font(.subheadline).foregroundStyle(Sunset.secondary(scheme))
                     }
                     if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 8) }
                     if !store.tracks.isEmpty && !selecting { selectionButton }
@@ -311,16 +370,25 @@ struct ContentView: View {
     }
     private func albumHeading(_ album: Track) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(album.album).font(.title2.bold()).fixedSize(horizontal: false, vertical: true)
+            Text(album.album).font(.system(.largeTitle, design: .serif, weight: .medium)).fixedSize(horizontal: false, vertical: true)
             Text(album.albumArtist).font(.subheadline).foregroundStyle(.secondary)
             Text("\(albumContents.count) 首 · \(playlistDuration(albumContents))").font(.footnote).foregroundStyle(.secondary)
+            if !selecting && !filtered.isEmpty { playButtons.padding(.top, 12) }
             if !selecting { selectionButton }
         }.frame(maxWidth: .infinity, alignment: .leading)
     }
+    private var collectionTitle: String {
+        switch section {
+        case .albums: return "唱片收藏"
+        case .songs: return "所有歌曲"
+        case .artists: return "艺术家"
+        case .favorites: return "心头所爱"
+        case .playlists: return "我的歌单"
+        }
+    }
     private var selectionButton: some View {
         Button("选择") { selecting = true; selectedIDs.removeAll(); searchFocused = false }
-            .font(.subheadline).frame(minWidth: 44, minHeight: 44)
-            .disabled(store.isBusy).accessibilityIdentifier("selectTracks")
+            .buttonStyle(StudioButtonStyle()).disabled(store.isBusy)
     }
     private var librarySummary: String {
         if !searchTerm.isEmpty { return "找到 \(filtered.count) 首歌曲" }
@@ -336,59 +404,76 @@ struct ContentView: View {
         if store.isLoading {
             ProgressView("正在读取音乐库…").frame(maxWidth: .infinity).padding(.vertical, 60)
         } else if store.tracks.isEmpty {
-            ContentUnavailableView {
-                Label("让喜欢的音乐，随身同行", systemImage: "music.note.house")
-            } description: {
-                Text("从“文件”中选择歌曲或整个文件夹，\n导入后即可离线聆听，无需账号。")
-            } actions: {
-                Button("导入音乐", systemImage: "plus") { importing = true }
-                    .buttonStyle(.borderedProminent).tint(Sunset.coral).controlSize(.large).disabled(store.isBusy)
-            }.padding(.vertical, 20)
-            VStack(alignment: .leading, spacing: 12) {
-                Text("支持 FLAC、ALAC、MP3、AAC、WAV、AIFF").font(.footnote)
+            VStack(spacing: 0) {
+                StudioEmptyState(symbol: "opticaldisc", title: "为喜欢的音乐，留一个位置", detail: "从一首歌、一张专辑开始。导入你的音乐，慢慢收藏，随时聆听。")
+                Button { importing = true } label: { Label("导入音乐", systemImage: "plus") }
+                    .buttonStyle(StudioButtonStyle(prominent: true)).disabled(store.isBusy)
+                Text("FLAC / ALAC / MP3 / AAC / WAV / AIFF")
+                    .font(.caption2.monospaced()).foregroundStyle(Sunset.secondary(scheme)).padding(.top, 24)
                 #if os(iOS)
-                Label("从电脑导入：连接 Mac，在 Finder → iPhone → 文件 → Zuneyra 中拖入音乐，再打开本应用。", systemImage: "cable.connector")
-                    .font(.footnote)
+                Text("也可以通过 Mac 的 Finder 文件共享传入音乐。")
+                    .font(.caption).foregroundStyle(Sunset.secondary(scheme)).multilineTextAlignment(.center).padding(.top, 12)
                 #endif
-            }.foregroundStyle(.secondary).padding(18).frame(maxWidth: .infinity, alignment: .leading)
-                .background(Sunset.panel(scheme), in: RoundedRectangle(cornerRadius: 16))
+            }.padding(.vertical, 44).frame(maxWidth: .infinity)
         } else if filtered.isEmpty {
-            ContentUnavailableView {
-                Label(searchTerm.isEmpty ? "收藏你的第一首歌" : "没有找到音乐", systemImage: searchTerm.isEmpty ? "heart" : "magnifyingglass")
-            } description: {
-                Text(searchTerm.isEmpty ? "在歌曲的更多菜单中点“收藏”，喜欢的音乐就会出现在这里。" : "没有与“\(searchTerm)”匹配的歌曲。试试歌曲、专辑或艺术家名称。")
-            } actions: {
+            VStack(spacing: 0) {
+                StudioEmptyState(symbol: searchTerm.isEmpty ? "heart" : "magnifyingglass", title: searchTerm.isEmpty ? "还没有收藏" : "没有找到音乐", detail: searchTerm.isEmpty ? "在歌曲菜单中点“收藏”，喜欢的音乐会集中保存在这里。" : "没有与“\(searchTerm)”匹配的歌曲。试试歌曲、专辑或艺术家名称。")
                 if !searchTerm.isEmpty {
-                    Button("清除搜索") { query = "" }.buttonStyle(.bordered)
+                    Button("清除搜索") { query = "" }.buttonStyle(StudioButtonStyle())
                 } else {
-                    Button("浏览歌曲") { switchSection(.songs) }.buttonStyle(.bordered)
+                    Button("浏览歌曲") { switchSection(.songs) }.buttonStyle(StudioButtonStyle())
                 }
-            }
+            }.padding(.vertical, 24).frame(maxWidth: .infinity)
         } else if section == .albums && selectedAlbum == nil && searchTerm.isEmpty && !selecting {
+            if let first = featuredAlbum.first {
+                CollectionFeatureView(track: first, repository: store.repository,
+                    summary: "\(featuredAlbum.count) 首歌曲 · \(playlistDuration(featuredAlbum))",
+                    isCurrent: store.current?.albumKey == first.albumKey, isPlaying: store.isPlaying, disabled: store.isManaging,
+                    play: {
+                        if store.current?.albumKey == first.albumKey {
+                            if !store.isPlaying { store.resume() }
+                            showingPlayer = true
+                        } else { playAll(featuredAlbum) }
+                    }, browse: { selectedAlbum = first.albumKey; query = ""; searchFocused = false })
+            }
             albumGrid
         } else if section == .artists && selectedAlbum == nil && searchTerm.isEmpty && !selecting {
             artistList
         } else {
-            if !selecting { playbackActions }
+            if !selecting && selectedAlbum == nil { playbackActions }
             songList(filtered)
         }
     }
 
+    private var featuredAlbum: [Track] {
+        if let current = store.current, let album = albums.first(where: { $0.first?.albumKey == current.albumKey }) { return album }
+        return albums.first ?? []
+    }
+
     private var albumGrid: some View {
-        LazyVGrid(columns: gridColumns, alignment: .leading, spacing: 26) {
-            ForEach(albums, id: \.first!.albumKey) { album in
-                Button { selectedAlbum = album[0].albumKey } label: {
-                    VStack(alignment: .leading, spacing: 9) {
-                        CoverArt(track: album[0], repository: store.repository).accessibilityHidden(true)
-                        Text(album[0].album).font(.headline).lineLimit(2)
-                        Text(album[0].albumArtist).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
-                        Text("\(album.count) 首歌曲").font(.caption).foregroundStyle(.secondary)
-                    }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
-                }.buttonStyle(.plain).accessibilityLabel("专辑 \(album[0].album)")
-                .contextMenu {
-                    Button("播放全部", systemImage: "play.fill") { playAll(album) }
-                    Button("下一首播放", systemImage: "text.line.first.and.arrowtriangle.forward") { store.insertNext(album) }
-                    Button("添加到歌单", systemImage: "music.note.list") { playlistAddRequest = PlaylistAddRequest(tracks: album) }.disabled(store.isBusy)
+        VStack(alignment: .leading, spacing: 22) {
+            HStack(spacing: 14) {
+                Text("全部专辑").font(.system(.title3, design: .serif, weight: .medium))
+                Rectangle().fill(Sunset.stroke(scheme).opacity(0.6)).frame(height: 1)
+                Text("\(albums.count)").font(.caption.monospacedDigit()).foregroundStyle(Sunset.secondary(scheme))
+            }.padding(.top, 8)
+            LazyVGrid(columns: gridColumns, alignment: .leading, spacing: 30) {
+                ForEach(albums, id: \.first!.albumKey) { album in
+                    Button { selectedAlbum = album[0].albumKey } label: {
+                        VStack(alignment: .leading, spacing: 10) {
+                            CoverArt(track: album[0], repository: store.repository)
+                                .shadow(color: .black.opacity(scheme == .dark ? 0.2 : 0.10), radius: 8, x: 0, y: 5)
+                                .accessibilityHidden(true)
+                            Text(album[0].album).font(.system(.headline, design: .serif, weight: .medium)).lineLimit(2).padding(.top, 3)
+                            Text(album[0].albumArtist).font(.subheadline).foregroundStyle(Sunset.secondary(scheme)).lineLimit(1)
+                            Text("\(album.count) 首歌曲").font(.caption).foregroundStyle(Sunset.secondary(scheme))
+                        }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+                    }.buttonStyle(.plain).accessibilityLabel("专辑 \(album[0].album)")
+                    .contextMenu {
+                        Button("播放全部", systemImage: "play.fill") { playAll(album) }
+                        Button("下一首播放", systemImage: "text.line.first.and.arrowtriangle.forward") { store.insertNext(album) }
+                        Button("添加到歌单", systemImage: "music.note.list") { playlistAddRequest = PlaylistAddRequest(tracks: album) }.disabled(store.isBusy)
+                    }
                 }
             }
         }
@@ -425,9 +510,9 @@ struct ContentView: View {
         let layout = dynamicTypeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10)) : AnyLayout(HStackLayout(spacing: 10))
         return layout {
             Button { playAll(filtered) } label: { Label("播放全部", systemImage: "play.fill").frame(minHeight: 28) }
-                .buttonStyle(.borderedProminent).tint(Sunset.coral)
+                .buttonStyle(StudioButtonStyle(prominent: true))
             Button { playAll(filtered, shuffled: true) } label: { Label("随机播放", systemImage: "shuffle").frame(minHeight: 28) }
-                .buttonStyle(.bordered)
+                .buttonStyle(StudioButtonStyle())
         }.font(.subheadline.weight(.semibold)).disabled(store.isManaging)
     }
     @ViewBuilder private var sortMenu: some View {
@@ -436,8 +521,9 @@ struct ContentView: View {
                 Picker("排序方式", selection: $songSort) {
                     ForEach(LibrarySongSort.allCases) { order in Text(order.title).tag(order) }
                 }
-            } label: { Image(systemName: "arrow.up.arrow.down").frame(width: 44, height: 44) }
-            .accessibilityLabel("排序：\(songSort.title)").accessibilityIdentifier("librarySort")
+            } label: { Label(songSort.title, systemImage: "arrow.up.arrow.down").font(.caption).frame(minHeight: 44) }
+            .menuStyle(.borderlessButton).fixedSize()
+            .accessibilityLabel("排序：\(songSort.title)")
         }
     }
     private func playAll(_ tracks: [Track], shuffled: Bool = false) {
@@ -457,53 +543,93 @@ struct ContentView: View {
         }
     }
     private func songList(_ tracks: [Track], allowSelection: Bool = true) -> some View {
-        LazyVStack(spacing: 0) {
-            ForEach(tracks) { track in
-                HStack(spacing: 8) {
-                    Button {
-                        if selecting && allowSelection {
-                            if selectedIDs.contains(track.id) { selectedIDs.remove(track.id) } else { selectedIDs.insert(track.id) }
-                        } else { searchFocused = false; store.play(track, context: tracks) }
-                    } label: {
-                        HStack(spacing: 12) {
+        VStack(spacing: 0) {
+            #if os(macOS)
+            HStack(spacing: 8) {
+                HStack(spacing: 12) {
+                    Text("#").frame(width: 24)
+                    Text("歌曲 / 艺术家").padding(.leading, 56).frame(maxWidth: .infinity, alignment: .leading)
+                    if selectedAlbum == nil { Text("专辑").frame(width: 140, alignment: .leading) }
+                    Text("时长").frame(width: 40, alignment: .trailing)
+                }
+                Color.clear.frame(width: 44, height: 1)
+            }.font(.system(size: 10, weight: .medium)).foregroundStyle(Sunset.secondary(scheme))
+                .padding(.horizontal, 8).padding(.bottom, 10)
+            Rectangle().fill(Sunset.stroke(scheme)).frame(height: 1)
+            #endif
+            LazyVStack(spacing: 0) {
+                ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
+                    HStack(spacing: 8) {
+                        Button {
                             if selecting && allowSelection {
-                                Image(systemName: selectedIDs.contains(track.id) ? "checkmark.circle.fill" : "circle")
-                                    .foregroundStyle(Sunset.accent(scheme)).frame(width: 26)
-                            }
-                            CoverArt(track: track, repository: store.repository).frame(width: 48, height: 48).accessibilityHidden(true)
-                                .overlay(alignment: .bottomTrailing) {
-                                    if store.current?.id == track.id {
-                                        Image(systemName: store.isPlaying ? "waveform" : "pause.fill")
-                                            .font(.caption2.bold()).foregroundStyle(.white).padding(5)
-                                            .background(Sunset.coral, in: Circle()).offset(x: 4, y: 4)
-                                    }
+                                if selectedIDs.contains(track.id) { selectedIDs.remove(track.id) } else { selectedIDs.insert(track.id) }
+                            } else { searchFocused = false; store.play(track, context: tracks) }
+                        } label: {
+                            HStack(spacing: 12) {
+                                if selecting && allowSelection {
+                                    Image(systemName: selectedIDs.contains(track.id) ? "checkmark.square.fill" : "square")
+                                        .foregroundStyle(Sunset.accent(scheme)).frame(width: 24)
+                                } else {
+                                    #if os(macOS)
+                                    Text(String(format: "%02d", selectedAlbum != nil && track.trackNumber > 0 ? track.trackNumber : index + 1)).font(.system(size: 10, design: .monospaced))
+                                        .foregroundStyle(Sunset.secondary(scheme)).frame(width: 24)
+                                    #endif
                                 }
-                            VStack(alignment: .leading, spacing: 5) {
-                                Text(track.title).font(.body.weight(.medium))
-                                    .foregroundStyle(store.current?.id == track.id ? Sunset.accent(scheme) : .primary)
-                                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
-                                Text(track.artist).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
-                            }.frame(maxWidth: .infinity, alignment: .leading)
-                            if !dynamicTypeSize.isAccessibilitySize {
-                                Text(playbackTime(track.duration)).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-                            }
-                        }.contentShape(Rectangle())
-                    }.buttonStyle(.plain)
-                        .accessibilityIdentifier("play-track-\(track.id)")
-                        .accessibilityLabel((selecting && allowSelection ? "选择 " : "播放 ") + track.title)
-                        .accessibilityValue(selecting && allowSelection ? (selectedIDs.contains(track.id) ? "已选择" : "未选择") : store.current?.id == track.id ? (store.isPlaying ? "正在播放" : "已暂停") : track.artist)
-                    if !selecting || !allowSelection {
-                        if track.favorite { Image(systemName: "heart.fill").font(.caption).foregroundStyle(Sunset.accent(scheme)).accessibilityLabel("已收藏") }
-                        Menu { songActions(track) } label: {
-                            Image(systemName: "ellipsis").font(.body.weight(.semibold)).frame(width: 44, height: 48).contentShape(Rectangle())
-                        }.menuStyle(.borderlessButton).fixedSize()
-                            .accessibilityLabel("歌曲操作 \(track.title)").accessibilityIdentifier("trackActions-\(track.id)")
-                    }
-                }.padding(.vertical, 10)
-                    .contextMenu { if allowSelection { songActions(track) } }
-                Divider().opacity(0.5).padding(.leading, selecting ? 86 : 60)
+                                CoverArt(track: track, repository: store.repository).frame(width: trackCoverSize, height: trackCoverSize).accessibilityHidden(true)
+                                    .overlay(alignment: .bottomTrailing) {
+                                        if store.current?.id == track.id {
+                                            Image(systemName: store.isPlaying ? "waveform" : "pause.fill")
+                                                .font(.system(size: 8, weight: .bold)).foregroundStyle(Sunset.paper).padding(4)
+                                                .background(Sunset.brand, in: RoundedRectangle(cornerRadius: 3)).offset(x: 3, y: 3)
+                                        }
+                                    }
+                                VStack(alignment: .leading, spacing: 3) {
+                                    HStack(spacing: 5) {
+                                        Text(track.title).font(.subheadline.weight(.medium))
+                                            .foregroundStyle(store.current?.id == track.id ? Sunset.accent(scheme) : .primary)
+                                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
+                                        if track.favorite {
+                                            Image(systemName: "heart.fill").font(.system(size: 9)).foregroundStyle(Sunset.accent(scheme)).accessibilityLabel("已收藏")
+                                        }
+                                    }
+                                    Text(track.artist).font(.caption).foregroundStyle(Sunset.secondary(scheme)).lineLimit(1)
+                                }.frame(maxWidth: .infinity, alignment: .leading)
+                                #if os(macOS)
+                                if selectedAlbum == nil {
+                                    Text(track.album).font(.system(size: 12)).foregroundStyle(Sunset.secondary(scheme))
+                                        .lineLimit(1).frame(width: 140, alignment: .leading)
+                                }
+                                #endif
+                                if !dynamicTypeSize.isAccessibilitySize {
+                                    Text(playbackTime(track.duration)).font(.caption.monospacedDigit()).foregroundStyle(Sunset.secondary(scheme)).frame(width: 40, alignment: .trailing)
+                                }
+                            }.contentShape(Rectangle())
+                        }.buttonStyle(.plain)
+                            .accessibilityLabel((selecting && allowSelection ? "选择 " : "播放 ") + track.title)
+                            .accessibilityValue(selecting && allowSelection ? (selectedIDs.contains(track.id) ? "已选择" : "未选择") : store.current?.id == track.id ? (store.isPlaying ? "正在播放" : "已暂停") : track.artist)
+                        if !selecting || !allowSelection {
+                            Menu { songActions(track) } label: {
+                                Image(systemName: "ellipsis")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundStyle(Sunset.secondary(scheme))
+                                    .frame(width: 44, height: 44).contentShape(Rectangle())
+                            }.menuStyle(.borderlessButton).menuIndicator(.hidden).frame(width: 44)
+                                .accessibilityLabel("歌曲操作 \(track.title)").accessibilityValue(track.favorite ? "已收藏" : "")
+                        } else {
+                            #if os(macOS)
+                            Color.clear.frame(width: 44, height: 44)
+                            #endif
+                        }
+                    }.padding(.horizontal, 8).padding(.vertical, 9)
+                        .background(store.current?.id == track.id ? Sunset.accent(scheme).opacity(0.07) : .clear, in: RoundedRectangle(cornerRadius: 5))
+                        .contextMenu { if allowSelection { songActions(track) } }
+                    Rectangle().fill(Sunset.stroke(scheme).opacity(0.4)).frame(height: 1)
+                }
             }
         }
+    }
+    private var trackCoverSize: CGFloat {
+        44
     }
     @ViewBuilder private func songActions(_ track: Track) -> some View {
         Button(track.favorite ? "取消收藏" : "收藏", systemImage: track.favorite ? "heart.slash" : "heart") { store.toggleFavorite(track) }.disabled(store.isBusy)
@@ -526,7 +652,8 @@ struct ContentView: View {
         return report.failures.isEmpty ? "checkmark.circle.fill" : "exclamationmark.circle"
     }
     private var importResults: some View {
-        NavigationStack {
+        VStack(spacing: 0) {
+            CollectionSheetHeader(title: "导入结果", close: { store.importReport = nil })
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     Label(importResultTitle, systemImage: importResultSymbol).font(.title2.bold()).foregroundStyle(Sunset.accent(scheme))
@@ -540,13 +667,18 @@ struct ContentView: View {
                                 let urls = report.failureItems.map { $0.resolvedURL() }
                                 store.importReport = nil
                                 store.importFiles(urls)
-                            }.disabled(store.isBusy)
+                            }.buttonStyle(StudioButtonStyle()).disabled(store.isBusy)
                         }
                         Button("查看导入记录") { managementTab = 1; openManagementAfterReport = true; store.importReport = nil }
+                            .buttonStyle(StudioButtonStyle())
                     }
-                }.padding(24)
-            }.background(Sunset.background(scheme)).toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { store.importReport = nil } } }
+                }.frame(maxWidth: .infinity, alignment: .leading).padding(24)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(Sunset.background(scheme).ignoresSafeArea())
+        .tint(Sunset.accent(scheme))
         #if os(macOS)
         .frame(width: 480, height: 360)
         #endif

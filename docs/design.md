@@ -55,7 +55,7 @@ Zuneyra 帮助用户整理和聆听自己拥有的音乐文件。用户在 iPhon
 
 - `Zuneyra/ContentView.swift` 为 SwiftUI 默认欢迎页。
 - `Zuneyra/ZuneyraApp.swift` 只有基础 `WindowGroup`。
-- 有主应用、单元测试、UI 测试 target；尚无独立原生 macOS target。
+- 初始工程包含主应用和测试 target；当前测试范围已收敛为 `ZuneyraTests`，不再保留 UI 测试 target。
 - 工程配置使用 iPhoneOS SDK，iOS deployment target 为 26.5，设备族包含 iPhone 与 iPad。
 - Swift 语言模式为 5.0，并启用了默认 MainActor 隔离相关设置。
 - 尚未实现播放、持久化、导入、系统媒体控制和 CarPlay。
@@ -238,8 +238,7 @@ Packages/ZuneyraCore/
     Playback/
   Tests/
 Packages/ZuneyraUI/          # 确有复用价值的视图与设计 token
-ZuneyraTests/
-ZuneyraUITests/
+ZuneyraTests/                # 单元与组件测试
 docs/
 ```
 
@@ -517,14 +516,15 @@ M3U8 导入导出保留顺序和重复条目，使用 UTF-8；跨设备路径不
 
 ## 12. 测试与发布验收
 
-### 12.1 自动化测试重点
+### 12.1 单元测试与手动验收
 
 - 队列纯逻辑：重复曲目、随机可回退、循环边界、插队、删除、空队列和全不可用队列。
 - 状态机：快速切歌与 seek、迟到回调、中断中手动暂停、恢复时文件丢失、generation 失效。
 - 持久化：从每个已发布 schema 升级、WAL 一致性备份、恢复、事务回滚、数据库写失败。
 - 导入：同一文件重复导入、空间不足、取消、损坏文件、原子移动后崩溃、提交前后崩溃恢复。
 - 元数据：多碟专辑、合辑、多艺术家、同名不同版本、Unicode、缺失标签、超大封面。
-- UI：首次导入、搜索播放、添加歌单、应用重启恢复、删除语义和基本键盘流程。
+
+以上为 `ZuneyraTests` 单元与组件测试的规划重点，具体已覆盖范围见实现记录。UI 采用手动验收：首次导入、搜索播放、添加歌单、应用重启恢复、删除语义和基本键盘流程；不维护界面自动化套件。
 
 以合成音频和许可允许的测试资产建立小型固定语料，不把用户私人音乐提交到仓库。引擎测试不能只 mock 成功回调，必须包含实际解码和时间边界验证。
 

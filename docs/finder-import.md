@@ -27,4 +27,4 @@ Finder 和 iPhone“文件”App 能看到的是 Zuneyra 的 Documents 目录。
 
 `UIFileSharingEnabled = YES` 启用 Finder 文件共享；`LSSupportsOpeningDocumentsInPlace = YES` 同时允许系统本地文件提供器展示 Documents 内容。参考 Apple 的 [UIFileSharingEnabled](https://developer.apple.com/documentation/bundleresources/information-property-list/uifilesharingenabled) 与 [Launch Services Keys](https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/LaunchServicesKeys.html)。
 
-自动化测试覆盖嵌套目录导入、原文件保留、跨启动处理记录、改名重复文件、损坏文件修复重试、文件变化时延后处理，以及应用加载和再次扫描时的音乐库刷新。模拟器可验证在 Documents 放入文件后的导入流程；Finder 的实际设备列表显示、USB 传输与“信任”流程需物理 iPhone 验证。
+`ZuneyraTests` 的单元与组件测试覆盖嵌套目录导入、原文件保留、跨启动处理记录、改名重复文件、损坏文件修复重试、文件变化时延后处理，以及应用加载和再次扫描时的音乐库刷新。模拟器可验证在 Documents 放入文件后的导入流程；Finder 的实际设备列表显示、USB 传输与“信任”流程需物理 iPhone 验证。
