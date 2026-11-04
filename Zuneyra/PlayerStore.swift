@@ -5,7 +5,13 @@ import Observation
 
 @MainActor @Observable
 final class PlayerStore {
-    var tracks: [Track] = []
+    var tracks: [Track] = [] {
+        didSet { trackIndex = Dictionary(uniqueKeysWithValues: tracks.map { ($0.id, $0) }) }
+    }
+    @ObservationIgnored private var trackIndex: [UUID: Track] = [:]
+    private(set) var playlists: [Playlist] = []
+    private(set) var isEditingPlaylists = false
+    var playlistNotice: String?
     var current: Track?
     var isPlaying = false
     var position = 0.0
@@ -18,9 +24,15 @@ final class PlayerStore {
     var history: [ImportRecord] = []
     var storage: StorageUsage?
     var managementMessage: String?
-    var isBusy: Bool { isLoading || isImporting || isManaging }
+    var isBusy: Bool { isLoading || isImporting || isManaging || isEditingPlaylists }
     var supportsIncomingFiles: Bool { sharedDocumentsURL != nil }
-    private(set) var queue: [Track] = []
+    private(set) var queueState = PlaybackQueue()
+    var queueNotice: String?
+    var queue: [Track] { queueState.orderedEntries.compactMap { track(for: $0) } }
+    func track(for entry: QueueEntry) -> Track? {
+        _ = tracks.count // Subscribe UI readers to library metadata changes.
+        return trackIndex[entry.trackID]
+    }
     let repository: MusicRepository
     private let preferences: UserDefaults
     private let sharedDocumentsURL: URL?
@@ -44,14 +56,19 @@ final class PlayerStore {
         self.sharedDocumentsURL = sharedDocumentsURL
         resources.timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.5, preferredTimescale: 600), queue: .main) { [weak self] _ in
             Task { @MainActor [weak self] in
-                guard let self, !self.isPreparing, !self.isSeeking else { return }
+                guard let self, !self.isPreparing, !self.isSeeking, self.player.currentItem != nil else { return }
                 // A queued callback can contain a pre-seek time. Read the current
                 // clock here so it cannot overwrite the restored/scrubbed position.
                 let seconds = self.player.currentTime().seconds
                 guard seconds.isFinite else { return }
                 self.position = max(0, seconds)
                 let checkpoint = Int(self.position) / 5
-                if checkpoint != self.lastCheckpoint { self.lastCheckpoint = checkpoint; self.saveSession() }
+                if checkpoint != self.lastCheckpoint {
+                    self.lastCheckpoint = checkpoint; self.saveSession()
+                    #if DEBUG && os(iOS)
+                    DevicePlaybackCheck.record("checkpoint", store: self)
+                    #endif
+                }
             }
         }
         rateObservation = player.observe(\.timeControlStatus, options: [.new]) { [weak self] _, _ in
@@ -59,19 +76,28 @@ final class PlayerStore {
                 guard let self else { return }
                 self.isPlaying = self.player.timeControlStatus == .playing
                 self.updateNowPlaying()
+                #if DEBUG && os(iOS)
+                DevicePlaybackCheck.record("playback-state", store: self)
+                #endif
             }
         }
         resources.notifications.append(NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: nil, queue: .main) { [weak self] note in
             let finishedItem = note.object as? AVPlayerItem
             Task { @MainActor [weak self] in
-                guard let self, let item = finishedItem, item === self.player.currentItem else { return }
+                guard let self, self.wantsPlayback, let item = finishedItem, item === self.player.currentItem else { return }
                 self.next(automatically: true)
             }
         })
         #if os(iOS)
         resources.notifications.append(NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] note in
             let reason = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
-            if reason == AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue { Task { @MainActor [weak self] in self?.pause() } }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if reason == AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue { self.pause() }
+                #if DEBUG
+                DevicePlaybackCheck.record("route-change-\(reason ?? 0)", store: self)
+                #endif
+            }
         })
         resources.notifications.append(NotificationCenter.default.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] note in
             let type = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
@@ -84,6 +110,9 @@ final class PlayerStore {
                 } else if self.resumeAfterInterruption && AVAudioSession.InterruptionOptions(rawValue: options).contains(.shouldResume) {
                     self.resumeAfterInterruption = false; self.resume()
                 }
+                #if DEBUG
+                DevicePlaybackCheck.record("interruption-\(type ?? 0)", store: self)
+                #endif
             }
         })
         #endif
@@ -96,12 +125,25 @@ final class PlayerStore {
         hasStartedLoading = true
         do {
             tracks = try await repository.load()
+            playlists = try await repository.loadPlaylists()
             history = try await repository.importHistory()
-            if let data = preferences.data(forKey: "playbackSession"), let saved = try? JSONDecoder().decode(Session.self, from: data) {
-                queue = saved.queue.compactMap { id in tracks.first { $0.id == id } }
-                if let track = tracks.first(where: { $0.id == saved.current }) {
-                    await prepare(track, autoplay: false, offset: saved.position)
+            if let data = preferences.data(forKey: "playbackSession") {
+                var savedPosition = 0.0
+                if let saved = try? JSONDecoder().decode(PlaybackSnapshot.self, from: data), saved.version == 2 {
+                    queueState = saved.queue
+                    savedPosition = saved.position
+                } else if let legacy = try? JSONDecoder().decode(LegacySession.self, from: data) {
+                    let ids = legacy.queue.filter { trackIndex[$0] != nil }
+                    queueState.replace(trackIDs: ids, selectedIndex: ids.firstIndex(of: legacy.current))
+                    savedPosition = legacy.position
                 }
+                queueState.reconcile(validTrackIDs: Set(trackIndex.keys))
+                if let entry = queueState.currentEntry, let track = track(for: entry) {
+                    let request = beginTransition(autoplay: false)
+                    current = track
+                    await prepare(entry, request: request, offset: savedPosition, reportMissing: true)
+                }
+                saveSession()
             }
         } catch { errorMessage = error.localizedDescription }
         isLoading = false
@@ -109,7 +151,7 @@ final class PlayerStore {
     }
 
     func scanSharedDocuments() {
-        guard !isLoading, !isImporting, !isManaging, let sharedDocumentsURL else { return }
+        guard !isLoading, !isImporting, !isManaging, !isEditingPlaylists, let sharedDocumentsURL else { return }
         isImporting = true
         importProgress = "正在检查电脑传入的音乐…"
         importTask = Task {
@@ -128,7 +170,7 @@ final class PlayerStore {
     }
 
     func importFiles(_ urls: [URL]) {
-        guard !isLoading, !isImporting, !isManaging else { return }
+        guard !isLoading, !isImporting, !isManaging, !isEditingPlaylists else { return }
         isImporting = true; importProgress = "正在准备文件…"
         importTask = Task {
             do {
@@ -158,7 +200,7 @@ final class PlayerStore {
         guard !isBusy, !ids.isEmpty else { return false }
         isManaging = true
         defer { isManaging = false }
-        let deletingCurrent = current.map { ids.contains($0.id) } ?? false
+        let deletingCurrent = (current.map { ids.contains($0.id) } ?? false) || (queueState.currentEntry.map { ids.contains($0.trackID) } ?? false)
         if deletingCurrent {
             generation += 1; seekRevision += 1; isPreparing = false; isSeeking = false
             pause()
@@ -166,17 +208,18 @@ final class PlayerStore {
         do {
             let result = try await repository.deleteTracks(ids)
             tracks.removeAll { ids.contains($0.id) }
-            queue.removeAll { ids.contains($0.id) }
+            queueState.removeTracks(ids)
             if deletingCurrent {
                 player.replaceCurrentItem(with: nil)
                 itemObservation = nil
                 current = nil; position = 0
-                preferences.removeObject(forKey: "playbackSession")
                 MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
                 #if os(macOS)
                 MPNowPlayingInfoCenter.default().playbackState = .stopped
                 #endif
-            } else { saveSession() }
+            }
+            saveSession()
+            playlists = try await repository.loadPlaylists()
             managementMessage = "已从音乐库删除 \(result.removed) 首歌曲，清除约 \(StorageUsage.formatted(result.bytes)) 的副本。Finder 或其他原位置文件保留。" + (result.failures.isEmpty ? "" : "\n" + result.failures.joined(separator: "\n"))
             await refreshManagement()
             return true
@@ -207,48 +250,176 @@ final class PlayerStore {
 
     func cancelImport() { importTask?.cancel() }
 
-    func play(_ track: Track, context: [Track]) {
-        guard !isManaging else { return }
-        queue = context.isEmpty ? [track] : context
-        Task { await prepare(track, autoplay: true) }
+    func playlistTracks(_ id: UUID) -> [Track] {
+        _ = tracks.count
+        return playlists.first { $0.id == id }?.trackIDs.compactMap { trackIndex[$0] } ?? []
     }
-    private func prepare(_ track: Track, autoplay: Bool, offset: Double = 0) async {
+    private func modifyPlaylists<T>(_ change: (MusicRepository) async throws -> T) async throws -> T {
+        guard !isBusy else { throw NSError(domain: "Zuneyra.Playlist", code: 1, userInfo: [NSLocalizedDescriptionKey: "正在处理音乐库，请稍后重试"]) }
+        isEditingPlaylists = true
+        defer { isEditingPlaylists = false }
+        let result = try await change(repository)
+        playlists = try await repository.loadPlaylists()
+        return result
+    }
+    func createPlaylist(name: String, tracks: [Track] = []) async throws -> Playlist {
+        try await modifyPlaylists { try await $0.createPlaylist(name: name, trackIDs: tracks.map(\.id)) }
+    }
+    func renamePlaylist(_ id: UUID, name: String) async throws {
+        try await modifyPlaylists { try await $0.renamePlaylist(id, name: name) }
+    }
+    func deletePlaylist(_ id: UUID) async throws {
+        try await modifyPlaylists { try await $0.deletePlaylist(id) }
+    }
+    func addToPlaylist(_ id: UUID, tracks: [Track]) async throws {
+        try await modifyPlaylists { try await $0.addToPlaylist(id, trackIDs: tracks.map(\.id)) }
+    }
+    func removeFromPlaylist(_ id: UUID, trackIDs: Set<UUID>) async throws {
+        try await modifyPlaylists { try await $0.removeFromPlaylist(id, trackIDs: trackIDs) }
+    }
+    func movePlaylistTracks(_ id: UUID, from offsets: IndexSet, to destination: Int) async throws {
+        try await modifyPlaylists { try await $0.movePlaylistTracks(id, from: offsets, to: destination) }
+    }
+    func playPlaylist(_ id: UUID, shuffled: Bool = false, startingAt trackID: UUID? = nil) {
+        let ordered = playlistTracks(id)
+        guard !isManaging, let first = trackID.flatMap({ id in ordered.first { $0.id == id } }) ?? (shuffled ? ordered.randomElement() : ordered.first) else { return }
+        queueState.setShuffle(shuffled)
+        play(first, context: ordered)
+    }
+
+    func play(_ track: Track, context: [Track]) {
+        guard !isManaging, trackIndex[track.id] != nil else { return }
+        var ids = context.map(\.id).filter { trackIndex[$0] != nil }
+        if !ids.contains(track.id) { ids = [track.id] }
+        queueState.replace(trackIDs: ids, selectedIndex: ids.firstIndex(of: track.id))
+        if let entry = queueState.currentEntry { schedule(entry) }
+    }
+    func playQueueEntry(_ id: UUID) {
         guard !isManaging else { return }
+        if id == queueState.currentID, player.currentItem != nil { resume(); return }
+        guard let entry = queueState.select(id) else { return }
+        schedule(entry)
+    }
+    func insertNext(_ additions: [Track]) {
+        guard !isManaging else { return }
+        queueState.insertNext(trackIDs: additions.map(\.id).filter { trackIndex[$0] != nil })
+        saveSession()
+    }
+    func appendToQueue(_ additions: [Track]) {
+        guard !isManaging else { return }
+        queueState.append(trackIDs: additions.map(\.id).filter { trackIndex[$0] != nil })
+        saveSession()
+    }
+    func removeQueueEntry(_ id: UUID) {
+        guard !isManaging else { return }
+        let removingCurrent = id == queueState.currentID
+        queueState.remove([id])
+        if removingCurrent { stopPlayback() }
+        saveSession()
+    }
+    func clearUpcoming() {
+        guard !isManaging else { return }
+        queueState.clearUpcoming()
+        saveSession()
+    }
+    func moveUpcoming(from offsets: IndexSet, to destination: Int) {
+        guard !isManaging else { return }
+        queueState.moveUpcoming(from: offsets, to: destination)
+        saveSession()
+    }
+    func moveUpcomingEntry(_ id: UUID, direction: Int) {
+        guard let index = queueState.upcoming.firstIndex(of: id) else { return }
+        let target = index + direction
+        guard queueState.upcoming.indices.contains(target) else { return }
+        moveUpcoming(from: IndexSet(integer: index), to: direction > 0 ? target + 1 : target)
+    }
+    func toggleShuffle() {
+        guard !isManaging else { return }
+        queueState.setShuffle(!queueState.shuffle)
+        saveSession(); updateNowPlaying()
+    }
+    func cycleRepeatMode() {
+        guard !isManaging else { return }
+        queueState.setRepeat(queueState.repeatMode.next)
+        saveSession(); updateNowPlaying()
+    }
+    private func beginTransition(autoplay: Bool) -> Int {
         generation += 1
-        let request = generation
-        isPreparing = true
         seekRevision += 1
-        isSeeking = false
+        isPreparing = true; isSeeking = false
         wantsPlayback = autoplay
+        queueNotice = nil
+        itemObservation = nil
         player.pause()
         player.replaceCurrentItem(with: nil)
-        current = track; position = 0
+        isPlaying = false
+        return generation
+    }
+    private func schedule(_ entry: QueueEntry, offset: Double = 0) {
+        let request = beginTransition(autoplay: true)
+        current = track(for: entry); position = offset
+        saveSession()
+        Task { await prepare(entry, request: request, offset: offset, reportMissing: true) }
+    }
+    @discardableResult
+    private func prepare(_ entry: QueueEntry, request: Int, offset: Double = 0, reportMissing: Bool) async -> Bool {
+        guard request == generation, queueState.currentID == entry.id,
+              let track = track(for: entry) else { return false }
+        current = track
+        position = min(max(0, offset.isFinite ? offset : 0), track.duration)
         let url = await repository.mediaURL(for: track)
-        guard request == generation else { return }
-        guard FileManager.default.fileExists(atPath: url.path) else { isPreparing = false; errorMessage = "找不到「\(track.title)」的本地文件。"; return }
+        guard request == generation, queueState.currentID == entry.id else { return false }
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            if reportMissing {
+                isPreparing = false; wantsPlayback = false
+                errorMessage = "找不到「\(track.title)」的本地文件。可以重新连接来源或导入音乐后重试。"
+                saveSession(); updateNowPlaying()
+            }
+            return false
+        }
         let item = AVPlayerItem(url: url)
         itemObservation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
             guard item.status == .failed else { return }
             let message = item.error?.localizedDescription ?? "无法播放此音频"
             Task { @MainActor [weak self] in
                 guard let self, request == self.generation else { return }
+                self.isPreparing = false
                 self.pause(); self.errorMessage = message
             }
         }
         player.replaceCurrentItem(with: item)
-        position = min(max(0, offset), track.duration)
         if position > 0 { await player.seek(to: CMTime(seconds: position, preferredTimescale: 600)) }
-        guard request == generation else { return }
+        guard request == generation, queueState.currentID == entry.id else { return false }
         isPreparing = false
         if wantsPlayback { resume() }
         saveSession(); updateNowPlaying()
+        return true
     }
-    func toggle() { if isPlaying || player.timeControlStatus == .waitingToPlayAtSpecifiedRate { pause() } else { resume() } }
+    private func stopPlayback() {
+        generation += 1; seekRevision += 1
+        isPreparing = false; isSeeking = false; wantsPlayback = false
+        player.pause(); player.replaceCurrentItem(with: nil)
+        itemObservation = nil
+        current = nil; position = 0; isPlaying = false
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+        #if os(macOS)
+        MPNowPlayingInfoCenter.default().playbackState = .stopped
+        #endif
+    }
+    func toggle() {
+        if isPlaying || (isPreparing && wantsPlayback) || player.timeControlStatus == .waitingToPlayAtSpecifiedRate { pause() }
+        else { resume() }
+    }
     func resume() {
         guard !isManaging else { return }
-        guard current != nil else { return }
         wantsPlayback = true
         guard !isPreparing else { return }
+        guard let entry = queueState.currentEntry else {
+            if !queueState.upcoming.isEmpty { next() }
+            else if let first = queueState.orderedEntries.first { playQueueEntry(first.id) }
+            return
+        }
+        guard player.currentItem != nil else { schedule(entry, offset: position); return }
         do {
             #if os(iOS)
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
@@ -258,9 +429,14 @@ final class PlayerStore {
             player.play()
         } catch { errorMessage = error.localizedDescription }
     }
-    func pause() { wantsPlayback = false; resumeAfterInterruption = false; player.pause(); isPlaying = false; saveSession(); updateNowPlaying() }
+    func pause() {
+        wantsPlayback = false; resumeAfterInterruption = false; player.pause(); isPlaying = false; saveSession(); updateNowPlaying()
+        #if DEBUG && os(iOS)
+        DevicePlaybackCheck.record("pause", store: self)
+        #endif
+    }
     func seek(to seconds: Double) {
-        guard let current else { return }
+        guard let current, seconds.isFinite, player.currentItem != nil else { return }
         position = min(max(0, seconds), current.duration)
         seekRevision += 1
         let revision = seekRevision
@@ -274,14 +450,49 @@ final class PlayerStore {
         saveSession(); updateNowPlaying()
     }
     func next(automatically: Bool = false) {
-        guard let current, let index = queue.firstIndex(where: { $0.id == current.id }) else { return }
-        guard index + 1 < queue.count else { pause(); if automatically { position = current.duration }; return }
-        play(queue[index + 1], context: queue)
+        guard !isManaging else { return }
+        let request = beginTransition(autoplay: true)
+        // Advance synchronously so consecutive skip commands each select an entry.
+        let first = queueState.advance(naturally: automatically)
+        if let first { current = track(for: first); position = 0; saveSession() }
+        Task {
+            var candidate = first
+            var attempted = Set<UUID>()
+            let limit = queueState.canonical.count
+            var traversals = 0
+            while request == generation, attempted.count < limit, traversals < max(1, limit * 2), let entry = candidate {
+                traversals += 1
+                if attempted.insert(entry.id).inserted {
+                    if await prepare(entry, request: request, reportMissing: false) {
+                        if attempted.count > 1 { queueNotice = "已跳过 \(attempted.count - 1) 个不可用的本地文件。" }
+                        return
+                    }
+                }
+                guard request == generation else { return }
+                guard attempted.count < limit else { break }
+                // A missing repeat-one item must not retry itself forever.
+                candidate = queueState.advance(naturally: false)
+            }
+            guard request == generation else { return }
+            isPreparing = false
+            if let entry = queueState.currentEntry { current = track(for: entry) }
+            pause()
+            if attempted.isEmpty {
+                if automatically { position = current?.duration ?? 0 }
+            } else {
+                position = 0
+                errorMessage = "队列中接下来的本地文件均不可用，播放已停止。"
+            }
+            saveSession(); updateNowPlaying()
+        }
     }
     func previous() {
+        guard !isManaging else { return }
         if position > 3 { seek(to: 0); return }
-        guard let current, let index = queue.firstIndex(where: { $0.id == current.id }), index > 0 else { seek(to: 0); return }
-        play(queue[index - 1], context: queue)
+        let previousID = queueState.currentID
+        guard let entry = queueState.previous() else { return }
+        if entry.id == previousID, player.currentItem != nil { seek(to: 0) }
+        else { schedule(entry) }
     }
     func toggleFavorite(_ track: Track) {
         guard !isManaging else { return }
@@ -293,10 +504,14 @@ final class PlayerStore {
             } catch { errorMessage = error.localizedDescription }
         }
     }
-    private struct Session: Codable { let current: UUID; let queue: [UUID]; let position: Double }
+    private struct LegacySession: Codable { let current: UUID; let queue: [UUID]; let position: Double }
     func saveSession() {
-        guard let current else { return }
-        if let data = try? JSONEncoder().encode(Session(current: current.id, queue: queue.map(\.id), position: position)) { preferences.set(data, forKey: "playbackSession") }
+        guard !queueState.canonical.isEmpty || queueState.shuffle || queueState.repeatMode != .off else {
+            preferences.removeObject(forKey: "playbackSession")
+            return
+        }
+        let snapshot = PlaybackSnapshot(queue: queueState, position: queueState.currentID == nil ? 0 : position)
+        if let data = try? JSONEncoder().encode(snapshot) { preferences.set(data, forKey: "playbackSession") }
     }
     private func updateNowPlaying() {
         guard let current else { return }

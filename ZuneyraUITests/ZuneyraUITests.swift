@@ -89,4 +89,103 @@ final class ZuneyraUITests: XCTestCase {
         app.buttons["完成"].firstMatch.tap()
     }
 
+    @MainActor
+    func testQueueModesReorderRemoveAndClearKeepLibrary() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-test-playback", "--ui-test-queue"]
+        app.launch()
+        defer { app.terminate() }
+        XCTAssertTrue(app.buttons["歌曲"].firstMatch.waitForExistence(timeout: 15))
+        app.buttons["歌曲"].firstMatch.tap()
+        let play = app.buttons["播放 Search Regression"]
+        XCTAssertTrue(play.waitForExistence(timeout: 10))
+        play.tap()
+        XCTAssertTrue(app.buttons["暂停"].firstMatch.waitForExistence(timeout: 10))
+        app.buttons["暂停"].firstMatch.tap()
+        app.buttons["queueToolbar"].firstMatch.tap()
+        let shuffle = app.buttons["shuffleMode"].firstMatch
+        XCTAssertTrue(shuffle.waitForExistence(timeout: 5))
+        shuffle.tap()
+        XCTAssertTrue(shuffle.label.contains("随机播放"))
+        shuffle.tap()
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Playback queue"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        let repeatMode = app.buttons["repeatMode"].firstMatch
+        repeatMode.tap()
+        XCTAssertTrue(repeatMode.label.contains("列表循环"))
+        repeatMode.tap()
+        XCTAssertTrue(repeatMode.label.contains("单曲循环"))
+        repeatMode.tap()
+        let thirdActions = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "队列操作 Queue Third")).firstMatch
+        XCTAssertTrue(thirdActions.waitForExistence(timeout: 5))
+        thirdActions.tap()
+        #if os(macOS)
+        app.menuItems["上移"].firstMatch.tap()
+        #else
+        app.buttons["上移"].firstMatch.tap()
+        #endif
+        let entries = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "queueEntry-"))
+        XCTAssertTrue(entries.element(boundBy: 1).label.contains("Queue Third"))
+        thirdActions.tap()
+        #if os(macOS)
+        app.menuItems["移出队列"].firstMatch.tap()
+        #else
+        app.buttons["移出队列"].firstMatch.tap()
+        #endif
+        XCTAssertFalse(thirdActions.exists)
+        app.descendants(matching: .any)["queueActions"].firstMatch.tap()
+        #if os(macOS)
+        app.menuItems["清空待播"].firstMatch.tap()
+        #else
+        app.buttons["清空待播"].firstMatch.tap()
+        #endif
+        XCTAssertTrue(app.staticTexts["emptyUpcoming"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["继续播放 Search Regression"].firstMatch.exists)
+        app.buttons["完成"].firstMatch.tap()
+        XCTAssertTrue(app.buttons["播放 Queue Third"].exists)
+        XCTAssertTrue(app.buttons["播放 Queue Second"].exists)
+    }
+
+    @MainActor
+    func testSongMenuBuildsQueueWithoutStartingPlayback() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-test-playback"]
+        app.launch()
+        defer { app.terminate() }
+        XCTAssertTrue(app.buttons["歌曲"].firstMatch.waitForExistence(timeout: 15))
+        app.buttons["歌曲"].firstMatch.tap()
+        let track = app.buttons["播放 Search Regression"]
+        XCTAssertTrue(track.waitForExistence(timeout: 10))
+        #if os(macOS)
+        track.rightClick()
+        app.menuItems["下一首播放"].firstMatch.tap()
+        track.rightClick()
+        app.menuItems["稍后播放"].firstMatch.tap()
+        #else
+        track.press(forDuration: 1)
+        app.buttons["下一首播放"].firstMatch.tap()
+        track.press(forDuration: 1)
+        app.buttons["稍后播放"].firstMatch.tap()
+        #endif
+        XCTAssertFalse(app.buttons["暂停"].exists)
+        app.buttons["queueToolbar"].firstMatch.tap()
+        let entries = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "queueEntry-"))
+        XCTAssertEqual(entries.count, 2)
+        entries.element(boundBy: 0).tap()
+        XCTAssertTrue(app.buttons["暂停 Search Regression"].waitForExistence(timeout: 10))
+        let actions = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "队列操作 Search Regression"))
+        actions.element(boundBy: 0).tap()
+        #if os(macOS)
+        app.menuItems["移出队列"].firstMatch.tap()
+        #else
+        app.buttons["移出队列"].firstMatch.tap()
+        #endif
+        XCTAssertEqual(entries.count, 1)
+        XCTAssertFalse(app.buttons["暂停 Search Regression"].exists)
+        app.buttons["完成"].firstMatch.tap()
+        XCTAssertTrue(track.exists)
+    }
+
 }

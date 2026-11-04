@@ -13,6 +13,8 @@ struct ContentView: View {
     @State private var showingPlayer = false
     @State private var showingQueue = false
     @State private var showingManagement = false
+    @State private var playlistAddRequest: PlaylistAddRequest?
+    private struct PlaylistAddRequest: Identifiable { let id = UUID(); let tracks: [Track] }
     @State private var managementTab = 0
     @State private var openManagementAfterReport = false
     @State private var selecting = false
@@ -21,9 +23,9 @@ struct ContentView: View {
     @State private var deletionBytes: Int64 = 0
 
     enum LibrarySection: String, CaseIterable, Identifiable {
-        case albums = "专辑", songs = "歌曲", artists = "艺术家", favorites = "我的收藏"
+        case albums = "专辑", songs = "歌曲", artists = "艺术家", favorites = "我的收藏", playlists = "歌单"
         var id: String { rawValue }
-        var icon: String { switch self { case .albums: "opticaldisc"; case .songs: "music.note"; case .artists: "person.2"; case .favorites: "heart" } }
+        var icon: String { switch self { case .albums: "opticaldisc"; case .songs: "music.note"; case .artists: "person.2"; case .favorites: "heart"; case .playlists: "music.note.list" } }
     }
     private var filtered: [Track] {
         store.tracks.filter { track in
@@ -43,7 +45,7 @@ struct ContentView: View {
                     Label("Zuneyra", systemImage: "waveform").font(.system(size: 24, weight: .heavy)).foregroundStyle(Sunset.coral).padding(.horizontal, 12).padding(.top, 22)
                     Text("音乐库").font(.caption).foregroundStyle(.secondary).padding(.horizontal, 12)
                     ForEach(LibrarySection.allCases) { item in
-                        Button { section = item; selectedAlbum = nil } label: {
+                        Button { section = item; selectedAlbum = nil; selecting = false; selectedIDs.removeAll() } label: {
                             Label(item.rawValue, systemImage: item.icon).frame(maxWidth: .infinity, alignment: .leading).padding(10).background(section == item ? Sunset.coral : .clear, in: RoundedRectangle(cornerRadius: 8)).foregroundStyle(section == item ? .white : .primary)
                         }.buttonStyle(.plain)
                     }
@@ -60,7 +62,7 @@ struct ContentView: View {
         .fileImporter(isPresented: $importing, allowedContentTypes: [.audio, .folder], allowsMultipleSelection: true) { result in
             switch result { case .success(let urls): store.importFiles(urls); case .failure(let error): store.errorMessage = error.localizedDescription }
         }
-        .alert("无法完成操作", isPresented: Binding(get: { store.errorMessage != nil && !showingManagement }, set: { if !$0 { store.errorMessage = nil } })) { Button("好") { store.errorMessage = nil } } message: { Text(store.errorMessage ?? "") }
+        .alert("无法完成操作", isPresented: Binding(get: { store.errorMessage != nil && !showingManagement && playlistAddRequest == nil }, set: { if !$0 { store.errorMessage = nil } })) { Button("好") { store.errorMessage = nil } } message: { Text(store.errorMessage ?? "") }
         .alert("操作结果", isPresented: Binding(get: { store.managementMessage != nil && !showingManagement }, set: { if !$0 { store.managementMessage = nil } })) {
             Button("好") { store.managementMessage = nil }
         } message: { Text(store.managementMessage ?? "") }
@@ -73,13 +75,19 @@ struct ContentView: View {
         } message: {
             Text("将从音乐库移除所选歌曲及收藏，并删除约 \(StorageUsage.formatted(deletionBytes)) 的本机音频副本。原位置和 Finder 传入文件保留。若包含正在播放的歌曲，播放会停止。此操作不可撤销。")
         }
+        .sheet(item: $playlistAddRequest) { request in AddToPlaylistView(tracks: request.tracks, onComplete: { playlistAddRequest = nil }) }
         .sheet(isPresented: $showingManagement) { LibraryManagementView(initialTab: managementTab).environment(store) }
         .onChange(of: store.tracks.map(\.id)) { _, ids in
             selectedIDs.formIntersection(Set(ids))
             if let key = selectedAlbum, !store.tracks.contains(where: { $0.albumKey == key }) { selectedAlbum = nil }
         }
         .sheet(isPresented: $showingPlayer) { fullPlayer }
-        .sheet(isPresented: $showingQueue) { queueView }
+        .sheet(isPresented: $showingQueue) {
+            NavigationStack { PlaybackQueueView() }.environment(store)
+            #if os(macOS)
+            .frame(width: 600, height: 650)
+            #endif
+        }
         .sheet(isPresented: Binding(get: { store.importReport != nil && !showingManagement }, set: { if !$0 { store.importReport = nil } }), onDismiss: {
             if openManagementAfterReport { openManagementAfterReport = false; showingManagement = true }
         }) { importResults }
@@ -97,7 +105,7 @@ struct ContentView: View {
             VStack(spacing: 0) {
                 HStack(spacing: 10) {
                     Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                    TextField("搜索你的音乐", text: $query)
+                    TextField(section == .playlists ? "搜索歌单" : "搜索你的音乐", text: $query)
                         .textFieldStyle(.plain)
                         .focused($searchFocused)
                         .frame(maxWidth: .infinity)
@@ -112,11 +120,23 @@ struct ContentView: View {
                 .padding(12)
                 .background(Sunset.panel(scheme), in: RoundedRectangle(cornerRadius: 12))
                 .padding(.horizontal, 24).padding(.vertical, 12)
+                if let notice = store.playlistNotice {
+                    HStack {
+                        Text(notice).font(.footnote)
+                        Spacer()
+                        Button { store.playlistNotice = nil } label: { Image(systemName: "xmark") }.buttonStyle(.plain).accessibilityLabel("关闭歌单提示")
+                    }.foregroundStyle(Sunset.coral).padding(.horizontal, 24).padding(.bottom, 10)
+                }
                 if selecting {
                     HStack {
                         Text("已选 \(selectedIDs.count) 首").font(.subheadline)
                         Button("全选当前结果") { selectedIDs.formUnion(filtered.map(\.id)) }
                         Spacer()
+                        Menu("更多") {
+                            Button("添加到歌单", systemImage: "music.note.list") { playlistAddRequest = PlaylistAddRequest(tracks: store.tracks.filter { selectedIDs.contains($0.id) }) }
+                            Button("下一首播放") { store.insertNext(store.tracks.filter { selectedIDs.contains($0.id) }) }
+                            Button("稍后播放") { store.appendToQueue(store.tracks.filter { selectedIDs.contains($0.id) }) }
+                        }.disabled(selectedIDs.isEmpty || store.isBusy).accessibilityIdentifier("selectedTracksActions")
                         Button("删除", role: .destructive) { beginDeletion(selectedIDs) }
                             .disabled(selectedIDs.isEmpty || store.isBusy).accessibilityIdentifier("deleteSelectedTracks")
                     }.padding(.horizontal, 24).padding(.bottom, 12)
@@ -126,10 +146,13 @@ struct ContentView: View {
                         #if os(iOS)
                         HStack {
                             ForEach(LibrarySection.allCases) { item in
-                                Button { section = item; selectedAlbum = nil } label: { Label(item.rawValue, systemImage: item.icon).font(.caption).labelStyle(.titleOnly).padding(.vertical, 10).frame(maxWidth: .infinity).background(section == item ? Sunset.coral : Sunset.panel(scheme), in: Capsule()).foregroundStyle(section == item ? .white : .primary) }
+                                Button { section = item; selectedAlbum = nil; selecting = false; selectedIDs.removeAll() } label: { Label(item.rawValue, systemImage: item.icon).font(.caption).labelStyle(.titleOnly).lineLimit(1).minimumScaleFactor(0.8).padding(.vertical, 10).frame(maxWidth: .infinity).background(section == item ? Sunset.coral : Sunset.panel(scheme), in: Capsule()).foregroundStyle(section == item ? .white : .primary) }
                             }
                         }.buttonStyle(.plain)
                         #endif
+                        if section == .playlists {
+                            PlaylistLibraryView(query: query)
+                        } else {
                         if selectedAlbum != nil {
                             Button { selectedAlbum = nil } label: { Label("所有专辑", systemImage: "chevron.left") }.buttonStyle(.plain)
                         }
@@ -169,6 +192,9 @@ struct ContentView: View {
                                             Text(album[0].albumArtist).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                                         }.contentShape(Rectangle())
                                     }.buttonStyle(.plain).accessibilityLabel("专辑 \(album[0].album)")
+                                    .contextMenu {
+                                        Button("添加到歌单", systemImage: "music.note.list") { playlistAddRequest = PlaylistAddRequest(tracks: album) }.disabled(store.isBusy)
+                                    }
                                 }
                             }
                         } else if section == .artists && selectedAlbum == nil && query.isEmpty && !selecting {
@@ -182,6 +208,7 @@ struct ContentView: View {
                             if !selecting { Button("播放全部", systemImage: "play.fill") { if let first = filtered.first { store.play(first, context: filtered) } }.buttonStyle(.borderedProminent) }
                             songList(filtered)
                         }
+                        }
                     }.padding(24).frame(maxWidth: 1150, alignment: .leading).frame(maxWidth: .infinity)
                 }
             }
@@ -189,8 +216,12 @@ struct ContentView: View {
             .navigationTitle("Zuneyra")
             .toolbar {
                 ToolbarItem(placement: .automatic) {
+                    Button("播放队列", systemImage: "list.bullet") { showingQueue = true }
+                        .accessibilityIdentifier("queueToolbar")
+                }
+                ToolbarItem(placement: .automatic) {
                     Button(selecting ? "完成选择" : "选择") { selecting.toggle(); selectedIDs.removeAll() }
-                        .disabled(store.isBusy || store.tracks.isEmpty).accessibilityIdentifier("selectTracks")
+                        .disabled(store.isBusy || store.tracks.isEmpty || section == .playlists).accessibilityIdentifier("selectTracks")
                 }
                 ToolbarItem(placement: .automatic) {
                     Button("管理", systemImage: "internaldrive") { managementTab = 0; showingManagement = true }.accessibilityIdentifier("libraryManagement")
@@ -247,7 +278,13 @@ struct ContentView: View {
                     }
                 }.padding(.vertical, 10)
                     .contextMenu {
-                        if allowSelection { Button("从音乐库删除", role: .destructive) { beginDeletion([track.id]) }.disabled(store.isBusy) }
+                        if allowSelection {
+                            Button("添加到歌单", systemImage: "music.note.list") { playlistAddRequest = PlaylistAddRequest(tracks: [track]) }.disabled(store.isBusy)
+                            Button("下一首播放", systemImage: "text.line.first.and.arrowtriangle.forward") { store.insertNext([track]) }.disabled(store.isBusy)
+                            Button("稍后播放", systemImage: "text.badge.plus") { store.appendToQueue([track]) }.disabled(store.isBusy)
+                            Divider()
+                            Button("从音乐库删除", role: .destructive) { beginDeletion([track.id]) }.disabled(store.isBusy)
+                        }
                     }
                 Divider().opacity(0.5)
             }
@@ -282,13 +319,17 @@ struct ContentView: View {
                         VStack(spacing: 7) { Text(track.title).font(.title2.bold()); Text(track.artist).foregroundStyle(.secondary) }
                         VStack(spacing: 8) {
                             Slider(value: Binding(get: { store.position }, set: { store.seek(to: $0) }), in: 0...max(track.duration, 0.01)).accessibilityLabel("播放进度")
-                            HStack { Text(playbackTime(store.position)); Spacer(); Text(playbackTime(track.duration)) }.font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                            HStack { Text(playbackTime(store.position)).accessibilityIdentifier("playbackElapsed"); Spacer(); Text(playbackTime(track.duration)) }.font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                         }
                         HStack(spacing: 40) {
                             Button { store.previous() } label: { Image(systemName: "backward.end.fill").font(.title2).frame(width: 44, height: 54) }.accessibilityLabel("上一首")
                             Button { store.toggle() } label: { Image(systemName: store.isPlaying ? "pause.fill" : "play.fill").font(.title2).frame(width: 66, height: 66).background(Sunset.coral, in: Circle()).foregroundStyle(.white) }.accessibilityLabel(store.isPlaying ? "暂停" : "播放")
                             Button { store.next() } label: { Image(systemName: "forward.end.fill").font(.title2).frame(width: 44, height: 54) }.accessibilityLabel("下一首")
                         }.buttonStyle(.plain)
+                        PlaybackModesView()
+                        NavigationLink { PlaybackQueueView(showsClose: false) } label: {
+                            Label("播放队列 · \(store.queueState.upcoming.count) 首待播", systemImage: "list.bullet")
+                        }
                         HStack {
                             Button { store.toggleFavorite(track) } label: { Label(track.favorite ? "已收藏" : "收藏", systemImage: track.favorite ? "heart.fill" : "heart") }
                             Spacer()
@@ -300,14 +341,6 @@ struct ContentView: View {
         }.tint(Sunset.coral)
         #if os(macOS)
         .frame(width: 460, height: 720)
-        #endif
-    }
-    private var queueView: some View {
-        NavigationStack {
-            ScrollView { VStack(alignment: .leading, spacing: 15) { Text("\(store.queue.count) 首音乐").foregroundStyle(.secondary); songList(store.queue, allowSelection: false) }.padding(24) }.background(Sunset.background(scheme)).navigationTitle("接下来播放").toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { showingQueue = false } } }
-        }
-        #if os(macOS)
-        .frame(width: 520, height: 520)
         #endif
     }
     private var importResults: some View {

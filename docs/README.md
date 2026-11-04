@@ -11,3 +11,9 @@
 - [中文标签与播放中搜索修复](./metadata-compatibility.md)：本地样本分析、兼容策略和搜索栏回归验证。
 
 - [音乐库管理与存储清理](./library-management.md)：多选删除、传入文件与封面清理、导入记录及失败重试。
+
+- [播放队列与播放模式](./playback-queue.md)：下一首与追加、排序移除、随机循环、暂停恢复与文件丢失处理。
+
+- [本地歌单](./playlists.md)：创建与编辑、歌曲添加入口、播放与 SQLite 升级规则。
+
+- [iPhone 真机播放验收](./device-playback-validation.md)：后台、锁屏、蓝牙与耳机路由实测记录。

@@ -52,7 +52,8 @@ actor MusicRepository {
         do {
             try execute("CREATE TABLE IF NOT EXISTS tracks (id TEXT PRIMARY KEY, digest TEXT UNIQUE NOT NULL, payload BLOB NOT NULL)")
             try execute("CREATE TABLE IF NOT EXISTS import_history (id TEXT PRIMARY KEY, payload BLOB NOT NULL)")
-            try execute("PRAGMA user_version = 1")
+            try execute("PRAGMA foreign_keys = ON")
+            try migratePlaylists()
             try recoverDeletions()
             // Incomplete imports never have a database row. Clean only our staging files.
             let staging = root.appending(path: "Staging")
@@ -543,5 +544,132 @@ extension MusicRepository {
             } catch { result.failures.append(error.localizedDescription) }
         }
         return result
+    }
+}
+
+
+extension MusicRepository {
+    private func migratePlaylists() throws {
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(database, "PRAGMA user_version", -1, &statement, nil) == SQLITE_OK else { throw failure("无法读取音乐库版本") }
+        let code = sqlite3_step(statement)
+        let version = sqlite3_column_int(statement, 0)
+        sqlite3_finalize(statement)
+        guard code == SQLITE_ROW, version <= 2 else { throw failure("音乐库版本较新，请更新应用后再打开") }
+        if version < 2 {
+            try execute("BEGIN TRANSACTION")
+            do {
+                try execute("CREATE TABLE playlists (id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL, created REAL NOT NULL, modified REAL NOT NULL)")
+                try execute("CREATE TABLE playlist_items (playlist_id TEXT NOT NULL REFERENCES playlists(id) ON DELETE CASCADE, track_id TEXT NOT NULL REFERENCES tracks(id) ON DELETE CASCADE, position INTEGER NOT NULL, PRIMARY KEY(playlist_id,track_id), UNIQUE(playlist_id,position))")
+                try execute("CREATE INDEX playlist_items_track ON playlist_items(track_id)")
+                try execute("PRAGMA user_version = 2")
+                try execute("COMMIT")
+            } catch { try? execute("ROLLBACK"); throw error }
+        }
+    }
+    func loadPlaylists() throws -> [Playlist] {
+        try open()
+        var statement: OpaquePointer?
+        let sql = "SELECT p.id,p.name,p.created,p.modified,i.track_id FROM playlists p LEFT JOIN playlist_items i ON i.playlist_id=p.id ORDER BY p.created DESC,p.id,i.position"
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else { throw failure("无法读取歌单") }
+        defer { sqlite3_finalize(statement) }
+        var result: [Playlist] = []
+        var code = sqlite3_step(statement)
+        while code == SQLITE_ROW {
+            guard let rawID = sqlite3_column_text(statement, 0), let id = UUID(uuidString: String(cString: rawID)),
+                  let rawName = sqlite3_column_text(statement, 1) else { throw failure("歌单记录损坏") }
+            if result.last?.id != id {
+                result.append(Playlist(id: id, name: String(cString: rawName), createdAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 2)), updatedAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 3)), trackIDs: []))
+            }
+            if let rawTrack = sqlite3_column_text(statement, 4) {
+                guard let trackID = UUID(uuidString: String(cString: rawTrack)) else { throw failure("歌单歌曲记录损坏") }
+                result[result.count - 1].trackIDs.append(trackID)
+            }
+            code = sqlite3_step(statement)
+        }
+        guard code == SQLITE_DONE else { throw failure("歌单读取未完成") }
+        return result
+    }
+    private func playlist(_ id: UUID) throws -> Playlist {
+        guard let playlist = try loadPlaylists().first(where: { $0.id == id }) else { throw failure("歌单已不存在，请返回歌单列表") }
+        return playlist
+    }
+    private func playlistName(_ name: String) throws -> String {
+        let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty, clean.count <= 100 else { throw failure("歌单名称需为 1–100 个字符") }
+        guard clean.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) }) else { throw failure("歌单名称不能包含换行或控制字符") }
+        return clean
+    }
+    private func playlistStatement(_ sql: String, id: UUID, name: String? = nil, timestamp: Double? = nil) throws {
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else { throw failure("无法更新歌单") }
+        defer { sqlite3_finalize(statement) }
+        let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+        sqlite3_bind_text(statement, 1, id.uuidString, -1, transient)
+        if let name { sqlite3_bind_text(statement, 2, name, -1, transient) }
+        if let timestamp { sqlite3_bind_double(statement, 3, timestamp) }
+        guard sqlite3_step(statement) == SQLITE_DONE else { throw failure("无法更新歌单：\(String(cString: sqlite3_errmsg(database)))") }
+    }
+    private func uniqueValidPlaylistTracks(_ ids: [UUID]) throws -> [UUID] {
+        let valid = try storedIDs()
+        guard ids.allSatisfy({ valid.contains($0) }) else { throw failure("部分歌曲已从音乐库移除，请刷新后重试") }
+        var seen = Set<UUID>()
+        return ids.filter { seen.insert($0).inserted }
+    }
+    private func writePlaylistItems(_ id: UUID, ids: [UUID]) throws {
+        try playlistStatement("DELETE FROM playlist_items WHERE playlist_id=?1", id: id)
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(database, "INSERT INTO playlist_items(playlist_id,track_id,position) VALUES(?,?,?)", -1, &statement, nil) == SQLITE_OK else { throw failure("无法保存歌单歌曲") }
+        defer { sqlite3_finalize(statement) }
+        let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+        for (index, trackID) in ids.enumerated() {
+            sqlite3_reset(statement)
+            sqlite3_bind_text(statement, 1, id.uuidString, -1, transient)
+            sqlite3_bind_text(statement, 2, trackID.uuidString, -1, transient)
+            sqlite3_bind_int64(statement, 3, Int64(index))
+            guard sqlite3_step(statement) == SQLITE_DONE else { throw failure("歌单保存未完成") }
+        }
+    }
+    func createPlaylist(name: String, trackIDs: [UUID] = []) throws -> Playlist {
+        try open()
+        let name = try playlistName(name), ids = try uniqueValidPlaylistTracks(trackIDs)
+        let id = UUID(), now = Date().timeIntervalSince1970
+        try execute("BEGIN TRANSACTION")
+        do {
+            try playlistStatement("INSERT INTO playlists(id,name,created,modified) VALUES(?1,?2,?3,?3)", id: id, name: name, timestamp: now)
+            try writePlaylistItems(id, ids: ids)
+            try execute("COMMIT")
+        } catch { try? execute("ROLLBACK"); throw error }
+        return try playlist(id)
+    }
+    func renamePlaylist(_ id: UUID, name: String) throws {
+        _ = try playlist(id)
+        try playlistStatement("UPDATE playlists SET name=?2,modified=?3 WHERE id=?1", id: id, name: playlistName(name), timestamp: Date().timeIntervalSince1970)
+    }
+    func deletePlaylist(_ id: UUID) throws {
+        _ = try playlist(id)
+        try playlistStatement("DELETE FROM playlists WHERE id=?1", id: id)
+    }
+    private func replacePlaylistItems(_ id: UUID, ids: [UUID]) throws {
+        try execute("BEGIN TRANSACTION")
+        do {
+            try writePlaylistItems(id, ids: ids)
+            try playlistStatement("UPDATE playlists SET modified=?3 WHERE id=?1", id: id, timestamp: Date().timeIntervalSince1970)
+            try execute("COMMIT")
+        } catch { try? execute("ROLLBACK"); throw error }
+    }
+    func addToPlaylist(_ id: UUID, trackIDs: [UUID]) throws {
+        let current = try playlist(id)
+        let ids = try uniqueValidPlaylistTracks(current.trackIDs + trackIDs)
+        if ids != current.trackIDs { try replacePlaylistItems(id, ids: ids) }
+    }
+    func removeFromPlaylist(_ id: UUID, trackIDs: Set<UUID>) throws {
+        let current = try playlist(id)
+        try replacePlaylistItems(id, ids: current.trackIDs.filter { !trackIDs.contains($0) })
+    }
+    func movePlaylistTracks(_ id: UUID, from offsets: IndexSet, to destination: Int) throws {
+        let current = try playlist(id)
+        guard let ids = current.trackIDs.moving(from: offsets, to: destination) else { throw failure("歌单内容已变化，请重试排序") }
+        try replacePlaylistItems(id, ids: ids)
     }
 }

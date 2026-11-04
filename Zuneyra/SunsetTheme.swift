@@ -18,6 +18,7 @@ struct CoverArt: View {
     let track: Track
     let repository: MusicRepository
     @State private var image: Image?
+    private struct ArtworkKey: Hashable { let trackID: UUID; let artwork: String? }
     private var warmColor: Color { [Sunset.coral, .orange, .pink, .purple][Int(track.digest.prefix(2), radix: 16).map { $0 % 4 } ?? 0] }
     var body: some View {
         GeometryReader { proxy in
@@ -35,8 +36,9 @@ struct CoverArt: View {
         }
         .aspectRatio(1, contentMode: .fit).clipShape(RoundedRectangle(cornerRadius: 12))
         .accessibilityLabel("\(track.album) 专辑封面")
-        .task(id: track.artwork) {
-            guard let data = try? await repository.artworkData(for: track) else { return }
+        .task(id: ArtworkKey(trackID: track.id, artwork: track.artwork)) {
+            image = nil
+            guard let data = try? await repository.artworkData(for: track), !Task.isCancelled else { return }
             // Decode a thumbnail rather than a full-resolution embedded cover.
             guard let source = CGImageSourceCreateWithData(data as CFData, nil), let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceThumbnailMaxPixelSize: 600, kCGImageSourceCreateThumbnailWithTransform: true] as CFDictionary) else { return }
             image = Image(decorative: cg, scale: 1)
