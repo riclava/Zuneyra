@@ -19,10 +19,12 @@ struct Track: Identifiable, Codable, Hashable, Sendable {
     var albumKey: String { album + "\u{1F}" + albumArtist }
 }
 
-struct ImportReport: Sendable {
+struct ImportReport: Codable, Sendable {
     var added = 0
     var duplicates = 0
     var failures: [String] = []
+    var failureItems: [ImportFailure] = []
+    var cancelled = false
     var summary: String { "已导入 \(added) 首，跳过 \(duplicates) 首重复音乐" }
 }
 
@@ -49,7 +51,9 @@ actor MusicRepository {
         database = db
         do {
             try execute("CREATE TABLE IF NOT EXISTS tracks (id TEXT PRIMARY KEY, digest TEXT UNIQUE NOT NULL, payload BLOB NOT NULL)")
+            try execute("CREATE TABLE IF NOT EXISTS import_history (id TEXT PRIMARY KEY, payload BLOB NOT NULL)")
             try execute("PRAGMA user_version = 1")
+            try recoverDeletions()
             // Incomplete imports never have a database row. Clean only our staging files.
             let staging = root.appending(path: "Staging")
             try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
@@ -121,9 +125,17 @@ actor MusicRepository {
         guard sqlite3_step(statement) == SQLITE_DONE else { throw failure("无法保存歌曲：\(String(cString: sqlite3_errmsg(database)))") }
     }
     func mediaURL(for track: Track) -> URL { root.appending(path: "Media/\(track.filename)") }
-    func artworkData(for track: Track) throws -> Data? {
+    func artworkData(for track: Track) async throws -> Data? {
         guard let artwork = track.artwork else { return nil }
-        return try Data(contentsOf: root.appending(path: "Media/\(artwork)"))
+        let url = root.appending(path: "Media/\(artwork)")
+        if FileManager.default.fileExists(atPath: url.path) { return try Data(contentsOf: url) }
+        let media = mediaURL(for: track)
+        let items = try await AVURLAsset(url: media).load(.commonMetadata)
+        guard let item = items.first(where: { $0.commonKey == .commonKeyArtwork }),
+              let data = try await item.load(.dataValue), data.count <= 12_000_000,
+              FileManager.default.fileExists(atPath: media.path) else { return nil }
+        try data.write(to: url, options: .atomic)
+        return data
     }
 
     private struct SharedFileStamp: Codable, Equatable {
@@ -169,7 +181,13 @@ actor MusicRepository {
         await progress(0, candidates.count)
         // Finder can still be writing when the app becomes active. Defer files that
         // change during this observation window, and verify again around the copy.
-        try await Task.sleep(for: .milliseconds(750))
+        do { try await Task.sleep(for: .milliseconds(750)) }
+        catch is CancellationError {
+            var report = ImportReport()
+            report.cancelled = true
+            try recordImport(report, source: "Finder 文件共享")
+            return report
+        }
         var report = ImportReport()
         for (index, candidate) in candidates.sorted(by: { $0.0.path < $1.0.path }).enumerated() {
             if Task.isCancelled { break }
@@ -183,9 +201,11 @@ actor MusicRepository {
                 ledger[url.path] = stamp
                 try JSONEncoder().encode(ledger).write(to: ledgerURL, options: .atomic)
             } catch is CancellationError { break }
-            catch { report.failures.append("\(url.lastPathComponent)：\(error.localizedDescription)") }
+            catch { report.failures.append("\(url.lastPathComponent)：\(error.localizedDescription)"); report.failureItems.append(ImportFailure(source: url, reason: error.localizedDescription)) }
             await progress(index + 1, candidates.count)
         }
+        report.cancelled = Task.isCancelled
+        try recordImport(report, source: "Finder 文件共享")
         return report
     }
 
@@ -199,7 +219,7 @@ actor MusicRepository {
         var files: [URL] = []
         for url in urls {
             if (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
-                guard let enumerator = FileManager.default.enumerator(at: url, includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey], options: [.skipsHiddenFiles, .skipsPackageDescendants]) else { report.failures.append("无法读取文件夹：\(url.lastPathComponent)"); continue }
+                guard let enumerator = FileManager.default.enumerator(at: url, includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey], options: [.skipsHiddenFiles, .skipsPackageDescendants]) else { report.failures.append("无法读取文件夹：\(url.lastPathComponent)"); report.failureItems.append(ImportFailure(source: url, reason: "无法读取文件夹，请重新选择来源授权")); continue }
                 while let child = enumerator.nextObject() as? URL {
                     let values = try child.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
                     if values.isRegularFile == true && values.isSymbolicLink != true && Self.extensions.contains(child.pathExtension.lowercased()) { files.append(child) }
@@ -212,9 +232,12 @@ actor MusicRepository {
                 guard Self.extensions.contains(url.pathExtension.lowercased()) else { throw failure("不支持的文件格式") }
                 let track = try await ingest(url, knownHashes: hashes)
                 if let track { hashes.insert(track.digest); report.added += 1 } else { report.duplicates += 1 }
-            } catch { report.failures.append("\(url.lastPathComponent)：\(error.localizedDescription)") }
+            } catch is CancellationError { break }
+            catch { report.failures.append("\(url.lastPathComponent)：\(error.localizedDescription)"); report.failureItems.append(ImportFailure(source: url, reason: error.localizedDescription)) }
             await progress(index + 1, files.count)
         }
+        report.cancelled = Task.isCancelled
+        try recordImport(report, source: "文件导入")
         return report
     }
 
@@ -292,4 +315,233 @@ actor MusicRepository {
 
 private extension String {
     var nilIfEmpty: String? { isEmpty ? nil : self }
+}
+
+extension MusicRepository {
+    func toggleFavorite(id: UUID) throws -> Track? {
+        try open()
+        // Read and update on the repository actor: a stale UI task must not
+        // reinsert a track that a concurrent deletion has already removed.
+        func read() throws -> Track? {
+            var statement: OpaquePointer?
+            guard sqlite3_prepare_v2(database, "SELECT payload FROM tracks WHERE id=?", -1, &statement, nil) == SQLITE_OK else { throw failure("无法读取收藏状态") }
+            defer { sqlite3_finalize(statement) }
+            let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+            sqlite3_bind_text(statement, 1, id.uuidString, -1, transient)
+            let code = sqlite3_step(statement)
+            if code == SQLITE_DONE { return nil }
+            guard code == SQLITE_ROW, let bytes = sqlite3_column_blob(statement, 0) else { throw failure("无法读取收藏状态") }
+            return try JSONDecoder().decode(Track.self, from: Data(bytes: bytes, count: Int(sqlite3_column_bytes(statement, 0))))
+        }
+        guard var track = try read() else { return nil }
+        track.favorite.toggle()
+        try save(track)
+        return track
+    }
+
+    func importHistory() throws -> [ImportRecord] {
+        try open()
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(database, "SELECT payload FROM import_history ORDER BY rowid DESC LIMIT 100", -1, &statement, nil) == SQLITE_OK else { throw failure("无法读取导入记录") }
+        defer { sqlite3_finalize(statement) }
+        var result: [ImportRecord] = []
+        var code = sqlite3_step(statement)
+        while code == SQLITE_ROW {
+            guard let bytes = sqlite3_column_blob(statement, 0) else { throw failure("导入记录损坏") }
+            let data = Data(bytes: bytes, count: Int(sqlite3_column_bytes(statement, 0)))
+            result.append(try JSONDecoder().decode(ImportRecord.self, from: data))
+            code = sqlite3_step(statement)
+        }
+        guard code == SQLITE_DONE else { throw failure("导入记录读取未完成") }
+        return result
+    }
+
+    private func recordImport(_ report: ImportReport, source: String) throws {
+        let record = ImportRecord(id: UUID(), date: Date(), source: source, report: report)
+        let payload = try JSONEncoder().encode(record)
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(database, "INSERT INTO import_history(id,payload) VALUES(?,?)", -1, &statement, nil) == SQLITE_OK else { throw failure("无法保存导入记录") }
+        defer { sqlite3_finalize(statement) }
+        let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+        sqlite3_bind_text(statement, 1, record.id.uuidString, -1, transient)
+        _ = payload.withUnsafeBytes { sqlite3_bind_blob(statement, 2, $0.baseAddress, Int32(payload.count), transient) }
+        guard sqlite3_step(statement) == SQLITE_DONE else { throw failure("无法保存导入记录") }
+        try execute("DELETE FROM import_history WHERE rowid NOT IN (SELECT rowid FROM import_history ORDER BY rowid DESC LIMIT 100)")
+    }
+
+    private func fileBytes(_ url: URL) -> Int64 {
+        Int64((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+    }
+    private func regularFiles(in directory: URL) -> [URL] {
+        guard let iterator = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey], options: [.skipsPackageDescendants]) else { return [] }
+        var files: [URL] = []
+        while let url = iterator.nextObject() as? URL {
+            let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+            if values?.isSymbolicLink == true { iterator.skipDescendants(); continue }
+            if values?.isRegularFile == true { files.append(url) }
+        }
+        return files
+    }
+    func storageUsage(documents: URL?) throws -> StorageUsage {
+        try open()
+        var usage = StorageUsage()
+        for url in regularFiles(in: root.appending(path: "Media")) {
+            if url.pathExtension == "artwork" { usage.artwork += fileBytes(url) }
+            else { usage.audio += fileBytes(url) }
+        }
+        for url in regularFiles(in: root.appending(path: "Staging")) + regularFiles(in: root.appending(path: "Trash")) { usage.temporary += fileBytes(url) }
+        for name in ["library.sqlite", "library.sqlite-wal", "library.sqlite-shm", "shared-imports.json"] { usage.database += fileBytes(root.appending(path: name)) }
+        if let documents {
+            let files = regularFiles(in: documents)
+            usage.incomingFiles = files.count
+            usage.incoming = files.reduce(0) { $0 + fileBytes($1) }
+        }
+        return usage
+    }
+    func managedBytes(for ids: Set<UUID>) throws -> Int64 {
+        let selected = try load().filter { ids.contains($0.id) }
+        return selected.reduce(0) { $0 + fileBytes(mediaURL(for: $1)) }
+    }
+    private func safeMediaURL(_ name: String) throws -> URL {
+        guard !name.isEmpty, name != ".", name != "..", URL(fileURLWithPath: name).lastPathComponent == name else { throw failure("音频文件路径无效") }
+        return root.appending(path: "Media/\(name)")
+    }
+    private func storedIDs() throws -> Set<UUID> {
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(database, "SELECT id FROM tracks", -1, &statement, nil) == SQLITE_OK else { throw failure("无法核对删除记录") }
+        defer { sqlite3_finalize(statement) }
+        var result = Set<UUID>()
+        var code = sqlite3_step(statement)
+        while code == SQLITE_ROW {
+            if let value = sqlite3_column_text(statement, 0), let id = UUID(uuidString: String(cString: value)) { result.insert(id) }
+            code = sqlite3_step(statement)
+        }
+        guard code == SQLITE_DONE else { throw failure("无法核对删除记录") }
+        return result
+    }
+    /// Before a committed SQL deletion, restore staged files. After commit, purge them.
+    private func recoverDeletions() throws {
+        let directory = root.appending(path: "Trash")
+        guard FileManager.default.fileExists(atPath: directory.path) else { return }
+        let ids = try storedIDs()
+        for job in try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) {
+            guard let data = try? Data(contentsOf: job.appending(path: "manifest.json")), let manifest = try? JSONDecoder().decode(DeletionManifest.self, from: data) else { continue }
+            for entry in manifest.entries where ids.contains(entry.trackID) {
+                for name in entry.files {
+                    let destination = try safeMediaURL(name)
+                    let staged = job.appending(path: name)
+                    if FileManager.default.fileExists(atPath: staged.path) {
+                        guard !FileManager.default.fileExists(atPath: destination.path) else { throw failure("删除恢复时发现文件冲突，已保留两份文件") }
+                        try FileManager.default.moveItem(at: staged, to: destination)
+                    }
+                }
+            }
+            try FileManager.default.removeItem(at: job)
+        }
+    }
+    func deleteTracks(_ ids: Set<UUID>) throws -> CleanupResult {
+        let all = try load()
+        let selected = all.filter { ids.contains($0.id) }
+        guard !selected.isEmpty else { return CleanupResult() }
+        let kept = all.filter { !ids.contains($0.id) }
+        let referenced = Set(kept.flatMap { [$0.filename] + ($0.artwork.map { [$0] } ?? []) })
+        let manifest = DeletionManifest(entries: selected.map { track in
+            DeletionManifest.Entry(trackID: track.id, files: ([track.filename] + (track.artwork.map { [$0] } ?? [])).filter { !referenced.contains($0) })
+        })
+        let job = root.appending(path: "Trash/\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: job, withIntermediateDirectories: true)
+        try JSONEncoder().encode(manifest).write(to: job.appending(path: "manifest.json"), options: .atomic)
+        var bytes: Int64 = 0
+        do {
+            for name in Set(manifest.entries.flatMap(\.files)) {
+                let original = try safeMediaURL(name)
+                if FileManager.default.fileExists(atPath: original.path) {
+                    bytes += fileBytes(original)
+                    try FileManager.default.moveItem(at: original, to: job.appending(path: name))
+                }
+            }
+            try execute("BEGIN TRANSACTION")
+            do {
+                var statement: OpaquePointer?
+                guard sqlite3_prepare_v2(database, "DELETE FROM tracks WHERE id=?", -1, &statement, nil) == SQLITE_OK else { throw failure("无法删除歌曲") }
+                defer { sqlite3_finalize(statement) }
+                let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+                for track in selected {
+                    sqlite3_reset(statement)
+                    sqlite3_bind_text(statement, 1, track.id.uuidString, -1, transient)
+                    guard sqlite3_step(statement) == SQLITE_DONE else { throw failure("歌曲删除未完成") }
+                }
+                try execute("COMMIT")
+            } catch { try? execute("ROLLBACK"); throw error }
+        } catch {
+            try recoverDeletions()
+            throw error
+        }
+        var result = CleanupResult()
+        result.removed = selected.count
+        do { try FileManager.default.removeItem(at: job); result.bytes = bytes }
+        catch { result.failures.append("歌曲已从音乐库移除，部分文件等待下次启动清理：\(error.localizedDescription)") }
+        return result
+    }
+    private func contentDigest(_ url: URL) throws -> String {
+        let file = try FileHandle(forReadingFrom: url)
+        defer { try? file.close() }
+        var hasher = SHA256()
+        while let bytes = try file.read(upToCount: 1_048_576), !bytes.isEmpty { hasher.update(data: bytes) }
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+    func cleanImportedDocuments(_ directory: URL) throws -> CleanupResult {
+        // Verify the managed copies themselves as well as the incoming files. A
+        // missing/corrupted library copy must never justify deleting an original.
+        let tracks = Dictionary(uniqueKeysWithValues: try load().map { ($0.digest, $0) })
+        var verified = Set<String>()
+        var removedPaths = Set<String>()
+        var result = CleanupResult()
+        for url in regularFiles(in: directory) {
+            guard Self.extensions.contains(url.pathExtension.lowercased()) else { result.skipped += 1; continue }
+            let coordinator = NSFileCoordinator()
+            var coordinationError: NSError?
+            var operationError: Error?
+            coordinator.coordinate(writingItemAt: url, options: .forDeleting, error: &coordinationError) { coordinated in
+                do {
+                    let before = try SharedFileStamp(url: coordinated)
+                    let digest = try contentDigest(coordinated)
+                    guard let track = tracks[digest] else { result.skipped += 1; return }
+                    if !verified.contains(digest) {
+                        guard (try? contentDigest(mediaURL(for: track))) == digest else { result.skipped += 1; return }
+                        verified.insert(digest)
+                    }
+                    guard try SharedFileStamp(url: coordinated) == before else { result.skipped += 1; return }
+                    try FileManager.default.removeItem(at: coordinated)
+                    removedPaths.insert(url.path)
+                    result.removed += 1
+                    result.bytes += Int64(before.size)
+                } catch { operationError = error }
+            }
+            if let error = coordinationError ?? operationError as NSError? { result.failures.append("\(url.lastPathComponent)：\(error.localizedDescription)") }
+        }
+        // A future transfer may reuse the original name, size and modification
+        // date. Forget cleaned paths so that such an explicit transfer is scanned.
+        let ledgerURL = root.appending(path: "shared-imports.json")
+        if !removedPaths.isEmpty, FileManager.default.fileExists(atPath: ledgerURL.path) {
+            do {
+                var ledger = try JSONDecoder().decode([String: SharedFileStamp].self, from: Data(contentsOf: ledgerURL))
+                for path in removedPaths { ledger.removeValue(forKey: path) }
+                try JSONEncoder().encode(ledger).write(to: ledgerURL, options: .atomic)
+            } catch { result.failures.append("文件已安全清理，但导入标记更新失败：\(error.localizedDescription)") }
+        }
+        return result
+    }
+    func clearArtworkCache() throws -> CleanupResult {
+        try open()
+        var result = CleanupResult()
+        for url in regularFiles(in: root.appending(path: "Media")) where url.pathExtension == "artwork" {
+            do {
+                let bytes = fileBytes(url)
+                try FileManager.default.removeItem(at: url)
+                result.removed += 1; result.bytes += bytes
+            } catch { result.failures.append(error.localizedDescription) }
+        }
+        return result
+    }
 }

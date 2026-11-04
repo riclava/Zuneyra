@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import SQLite3
 @testable import Zuneyra
 
 struct ZuneyraTests {
@@ -154,6 +155,13 @@ struct ZuneyraTests {
         #expect(repaired.failures.isEmpty)
         let unchanged = try await repository.importSharedDocuments(from: documents) { _, _ in }
         #expect(unchanged.added == 0 && unchanged.duplicates == 0)
+        let another = documents.appending(path: "Cancelled.wav")
+        try FileManager.default.copyItem(at: source, to: another)
+        let cancelled = Task { try await repository.importSharedDocuments(from: documents) { _, _ in } }
+        cancelled.cancel()
+        #expect(try await cancelled.value.cancelled)
+        #expect(try await repository.importHistory().first?.report.cancelled == true)
+        #expect(FileManager.default.fileExists(atPath: another.path))
     }
 
     @Test @MainActor func finderImportRunsOnLoadAndForegroundScan() async throws {
@@ -255,4 +263,161 @@ struct ZuneyraTests {
         #expect(metadata.correctedArtist(name) == name)
     }
 
+    @Test func historyPersistsFailuresAndSupportsRetry() async throws {
+        let (root, source) = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let broken = root.appending(path: "Needs retry.wav")
+        try Data("incomplete transfer".utf8).write(to: broken)
+        let repository = MusicRepository(root: root.appending(path: "Library"))
+        _ = try await repository.importFiles([broken]) { _, _ in }
+        let reopened = MusicRepository(root: root.appending(path: "Library"))
+        let record = try #require(try await reopened.importHistory().first)
+        #expect(record.report.failureItems.count == 1)
+        #expect(record.report.failureItems.first?.filename == broken.lastPathComponent)
+        try Data(contentsOf: source).write(to: broken, options: .atomic)
+        let result = try await reopened.importFiles(record.report.failureItems.map { $0.resolvedURL() }) { _, _ in }
+        #expect(result.added == 1 && result.failures.isEmpty)
+        #expect(try await reopened.importHistory().count == 2)
+        #expect(try await reopened.load().count == 1)
+    }
+
+    @Test @MainActor func deletingCurrentTrackStopsPlaybackAndPreservesIncomingOriginal() async throws {
+        let (root, source) = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let documents = root.appending(path: "Documents")
+        try FileManager.default.createDirectory(at: documents, withIntermediateDirectories: true)
+        let received = documents.appending(path: "Original.wav")
+        try FileManager.default.copyItem(at: source, to: received)
+        let repository = MusicRepository(root: root.appending(path: "Library"))
+        _ = try await repository.importSharedDocuments(from: documents) { _, _ in }
+        let suite = UUID().uuidString
+        let preferences = try #require(UserDefaults(suiteName: suite))
+        defer { preferences.removePersistentDomain(forName: suite) }
+        let store = PlayerStore(repository: repository, preferences: preferences, sharedDocumentsURL: nil)
+        await store.load()
+        let track = try #require(store.tracks.first)
+        store.play(track, context: store.tracks)
+        for _ in 0..<100 { if store.isPlaying { break }; try await Task.sleep(for: .milliseconds(20)) }
+        store.toggleFavorite(track) // A queued favorite update cannot resurrect a deleted row.
+        #expect(await store.deleteTracks([track.id]))
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(try await repository.load().isEmpty)
+        #expect(try await repository.toggleFavorite(id: track.id) == nil)
+        #expect(store.current == nil && !store.isPlaying && store.queue.isEmpty)
+        #expect(store.tracks.isEmpty)
+        #expect(preferences.data(forKey: "playbackSession") == nil)
+        #expect(FileManager.default.fileExists(atPath: received.path))
+        let managed = await repository.mediaURL(for: track)
+        #expect(!FileManager.default.fileExists(atPath: managed.path))
+        let scan = try await repository.importSharedDocuments(from: documents) { _, _ in }
+        #expect(scan.added == 0) // An unchanged incoming file does not undo a user's deletion.
+    }
+
+    @Test func cleanupPreservesChangedUnimportedAndCorruptedCopySources() async throws {
+        let (root, source) = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let documents = root.appending(path: "Documents")
+        try FileManager.default.createDirectory(at: documents, withIntermediateDirectories: true)
+        let imported = documents.appending(path: "Imported.wav")
+        try FileManager.default.copyItem(at: source, to: imported)
+        let repository = MusicRepository(root: root.appending(path: "Library"))
+        _ = try await repository.importSharedDocuments(from: documents) { _, _ in }
+        let changed = documents.appending(path: "Changed.wav")
+        var bytes = try Data(contentsOf: source); bytes[bytes.count - 1] = 1
+        try bytes.write(to: changed)
+        let broken = documents.appending(path: "broken.wav")
+        try Data("incomplete".utf8).write(to: broken)
+        let note = documents.appending(path: "notes.txt")
+        try Data("keep me".utf8).write(to: note)
+        let usage = try await repository.storageUsage(documents: documents)
+        #expect(usage.incomingFiles == 4 && usage.audio > 0 && usage.incoming > usage.audio)
+        let first = try await repository.cleanImportedDocuments(documents)
+        #expect(first.removed == 1 && first.skipped == 3)
+        #expect(FileManager.default.fileExists(atPath: changed.path))
+        #expect(FileManager.default.fileExists(atPath: broken.path))
+        #expect(FileManager.default.fileExists(atPath: note.path))
+        try FileManager.default.copyItem(at: source, to: imported)
+        let track = try #require(try await repository.load().first)
+        let managed = await repository.mediaURL(for: track)
+        try Data("corrupted managed copy".utf8).write(to: managed)
+        let second = try await repository.cleanImportedDocuments(documents)
+        #expect(second.removed == 0)
+        #expect(FileManager.default.fileExists(atPath: imported.path))
+        // Cleanup must also forget the incoming path's old scan marker. After
+        // deleting the library copy, a fresh transfer can have identical metadata.
+        try Data(contentsOf: source).write(to: managed)
+        _ = try await repository.cleanImportedDocuments(documents)
+        _ = try await repository.deleteTracks([track.id])
+        try FileManager.default.copyItem(at: source, to: imported)
+        let freshTransfer = try await repository.importSharedDocuments(from: documents) { _, _ in }
+        #expect(freshTransfer.added == 2) // The retransferred original and Changed.wav.
+        #expect(try await repository.load().contains(where: { $0.title == "Imported" }))
+    }
+
+    @Test func failedDatabaseDeletionRestoresStagedAudio() async throws {
+        let (root, source) = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let library = root.appending(path: "Library")
+        let repository = MusicRepository(root: library)
+        _ = try await repository.importFiles([source]) { _, _ in }
+        let track = try #require(try await repository.load().first)
+        var db: OpaquePointer?
+        #expect(sqlite3_open(library.appending(path: "library.sqlite").path, &db) == SQLITE_OK)
+        defer { sqlite3_close(db) }
+        #expect(sqlite3_exec(db, "CREATE TRIGGER block_deletion BEFORE DELETE ON tracks BEGIN SELECT RAISE(ABORT, 'test failure'); END", nil, nil, nil) == SQLITE_OK)
+        do { _ = try await repository.deleteTracks([track.id]); Issue.record("Deletion should fail") } catch { }
+        #expect(try await repository.load().count == 1)
+        let managed = await repository.mediaURL(for: track)
+        #expect(try Data(contentsOf: managed) == Data(contentsOf: source))
+    }
+
+    @Test func interruptedDeletionRestoresBeforeCommitAndPurgesAfterCommit() async throws {
+        let (root, source) = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let library = root.appending(path: "Library")
+        let repository = MusicRepository(root: library)
+        _ = try await repository.importFiles([source]) { _, _ in }
+        let track = try #require(try await repository.load().first)
+        let managed = await repository.mediaURL(for: track)
+        let job = library.appending(path: "Trash/test-job")
+        try FileManager.default.createDirectory(at: job, withIntermediateDirectories: true)
+        let manifest = DeletionManifest(entries: [.init(trackID: track.id, files: [track.filename])])
+        try JSONEncoder().encode(manifest).write(to: job.appending(path: "manifest.json"))
+        try FileManager.default.moveItem(at: managed, to: job.appending(path: track.filename))
+        let reopened = MusicRepository(root: library)
+        #expect(try await reopened.load().count == 1)
+        #expect(FileManager.default.fileExists(atPath: managed.path))
+        try FileManager.default.createDirectory(at: job, withIntermediateDirectories: true)
+        try JSONEncoder().encode(manifest).write(to: job.appending(path: "manifest.json"))
+        try FileManager.default.moveItem(at: managed, to: job.appending(path: track.filename))
+        var db: OpaquePointer?
+        #expect(sqlite3_open(library.appending(path: "library.sqlite").path, &db) == SQLITE_OK)
+        defer { sqlite3_close(db) }
+        #expect(sqlite3_exec(db, "DELETE FROM tracks", nil, nil, nil) == SQLITE_OK)
+        let afterCommit = MusicRepository(root: library)
+        #expect(try await afterCommit.load().isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: job.path))
+    }
+
+    @Test func artworkCacheRebuildsFromEmbeddedCover() async throws {
+        let bundle = Bundle(for: FixtureBundleMarker.self)
+        let source = try #require(bundle.url(forResource: "silence-with-cover", withExtension: "mp3"))
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let repository = MusicRepository(root: root)
+        let report = try await repository.importFiles([source]) { _, _ in }
+        #expect(report.added == 1)
+        let track = try #require(try await repository.load().first)
+        let original = try #require(try await repository.artworkData(for: track))
+        #expect(try await repository.storageUsage(documents: nil).artwork > 0)
+        let cleaned = try await repository.clearArtworkCache()
+        #expect(cleaned.removed == 1)
+        #expect(try await repository.storageUsage(documents: nil).artwork == 0)
+        let rebuilt = try await repository.artworkData(for: track)
+        #expect(rebuilt == original)
+        #expect(try await repository.storageUsage(documents: nil).audio > 0)
+    }
+
 }
+
+private final class FixtureBundleMarker: NSObject {}

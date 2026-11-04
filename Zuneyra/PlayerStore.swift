@@ -14,6 +14,12 @@ final class PlayerStore {
     var importReport: ImportReport?
     var errorMessage: String?
     var isLoading = true
+    var isManaging = false
+    var history: [ImportRecord] = []
+    var storage: StorageUsage?
+    var managementMessage: String?
+    var isBusy: Bool { isLoading || isImporting || isManaging }
+    var supportsIncomingFiles: Bool { sharedDocumentsURL != nil }
     private(set) var queue: [Track] = []
     let repository: MusicRepository
     private let preferences: UserDefaults
@@ -48,9 +54,12 @@ final class PlayerStore {
                 if checkpoint != self.lastCheckpoint { self.lastCheckpoint = checkpoint; self.saveSession() }
             }
         }
-        rateObservation = player.observe(\.timeControlStatus, options: [.new]) { [weak self] player, _ in
-            let playing = player.timeControlStatus == .playing
-            Task { @MainActor [weak self] in self?.isPlaying = playing; self?.updateNowPlaying() }
+        rateObservation = player.observe(\.timeControlStatus, options: [.new]) { [weak self] _, _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.isPlaying = self.player.timeControlStatus == .playing
+                self.updateNowPlaying()
+            }
         }
         resources.notifications.append(NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: nil, queue: .main) { [weak self] note in
             let finishedItem = note.object as? AVPlayerItem
@@ -87,6 +96,7 @@ final class PlayerStore {
         hasStartedLoading = true
         do {
             tracks = try await repository.load()
+            history = try await repository.importHistory()
             if let data = preferences.data(forKey: "playbackSession"), let saved = try? JSONDecoder().decode(Session.self, from: data) {
                 queue = saved.queue.compactMap { id in tracks.first { $0.id == id } }
                 if let track = tracks.first(where: { $0.id == saved.current }) {
@@ -99,7 +109,7 @@ final class PlayerStore {
     }
 
     func scanSharedDocuments() {
-        guard !isLoading, !isImporting, let sharedDocumentsURL else { return }
+        guard !isLoading, !isImporting, !isManaging, let sharedDocumentsURL else { return }
         isImporting = true
         importProgress = "正在检查电脑传入的音乐…"
         importTask = Task {
@@ -108,7 +118,8 @@ final class PlayerStore {
                     await MainActor.run { [weak self] in self?.importProgress = "正在导入电脑音乐 \(completed) / \(total)" }
                 }
                 tracks = try await repository.load()
-                if report.added > 0 || report.duplicates > 0 || !report.failures.isEmpty { importReport = report }
+                history = try await repository.importHistory()
+                if report.added > 0 || report.duplicates > 0 || !report.failures.isEmpty || report.cancelled { importReport = report }
             } catch is CancellationError { /* The next scan can retry unprocessed files. */ }
             catch { errorMessage = error.localizedDescription }
             isImporting = false
@@ -117,7 +128,7 @@ final class PlayerStore {
     }
 
     func importFiles(_ urls: [URL]) {
-        guard !isImporting else { return }
+        guard !isLoading, !isImporting, !isManaging else { return }
         isImporting = true; importProgress = "正在准备文件…"
         importTask = Task {
             do {
@@ -125,19 +136,84 @@ final class PlayerStore {
                     await MainActor.run { [weak self] in self?.importProgress = "正在导入 \(completed) / \(total)" }
                 }
                 tracks = try await repository.load()
+                history = try await repository.importHistory()
                 importReport = report
             } catch { errorMessage = error.localizedDescription }
             isImporting = false
             importTask = nil
         }
     }
+    func retryImport(_ record: ImportRecord) {
+        importFiles(record.report.failureItems.map { $0.resolvedURL() })
+    }
+
+    func refreshManagement() async {
+        do {
+            history = try await repository.importHistory()
+            storage = try await repository.storageUsage(documents: sharedDocumentsURL)
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    func deleteTracks(_ ids: Set<UUID>) async -> Bool {
+        guard !isBusy, !ids.isEmpty else { return false }
+        isManaging = true
+        defer { isManaging = false }
+        let deletingCurrent = current.map { ids.contains($0.id) } ?? false
+        if deletingCurrent {
+            generation += 1; seekRevision += 1; isPreparing = false; isSeeking = false
+            pause()
+        }
+        do {
+            let result = try await repository.deleteTracks(ids)
+            tracks.removeAll { ids.contains($0.id) }
+            queue.removeAll { ids.contains($0.id) }
+            if deletingCurrent {
+                player.replaceCurrentItem(with: nil)
+                itemObservation = nil
+                current = nil; position = 0
+                preferences.removeObject(forKey: "playbackSession")
+                MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+                #if os(macOS)
+                MPNowPlayingInfoCenter.default().playbackState = .stopped
+                #endif
+            } else { saveSession() }
+            managementMessage = "已从音乐库删除 \(result.removed) 首歌曲，清除约 \(StorageUsage.formatted(result.bytes)) 的副本。Finder 或其他原位置文件保留。" + (result.failures.isEmpty ? "" : "\n" + result.failures.joined(separator: "\n"))
+            await refreshManagement()
+            return true
+        } catch { errorMessage = error.localizedDescription; return false }
+    }
+
+    func cleanIncomingFiles() async {
+        guard !isBusy, let sharedDocumentsURL else { return }
+        isManaging = true
+        defer { isManaging = false }
+        do {
+            let result = try await repository.cleanImportedDocuments(sharedDocumentsURL)
+            managementMessage = result.message
+            await refreshManagement()
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    func clearArtwork() async {
+        guard !isBusy else { return }
+        isManaging = true
+        defer { isManaging = false }
+        do {
+            let result = try await repository.clearArtworkCache()
+            managementMessage = result.message + "封面将在浏览时按需重新生成。"
+            await refreshManagement()
+        } catch { errorMessage = error.localizedDescription }
+    }
+
     func cancelImport() { importTask?.cancel() }
 
     func play(_ track: Track, context: [Track]) {
+        guard !isManaging else { return }
         queue = context.isEmpty ? [track] : context
         Task { await prepare(track, autoplay: true) }
     }
     private func prepare(_ track: Track, autoplay: Bool, offset: Double = 0) async {
+        guard !isManaging else { return }
         generation += 1
         let request = generation
         isPreparing = true
@@ -169,6 +245,7 @@ final class PlayerStore {
     }
     func toggle() { if isPlaying || player.timeControlStatus == .waitingToPlayAtSpecifiedRate { pause() } else { resume() } }
     func resume() {
+        guard !isManaging else { return }
         guard current != nil else { return }
         wantsPlayback = true
         guard !isPreparing else { return }
@@ -207,10 +284,10 @@ final class PlayerStore {
         play(queue[index - 1], context: queue)
     }
     func toggleFavorite(_ track: Track) {
+        guard !isManaging else { return }
         Task {
-            var updated = track; updated.favorite.toggle()
             do {
-                try await repository.save(updated)
+                guard let updated = try await repository.toggleFavorite(id: track.id) else { return }
                 if let index = tracks.firstIndex(where: { $0.id == track.id }) { tracks[index] = updated }
                 if current?.id == track.id { current = updated }
             } catch { errorMessage = error.localizedDescription }

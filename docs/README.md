@@ -9,3 +9,5 @@
 - [Finder 文件共享导入](./finder-import.md)：从 Mac 向 iPhone 拖入音乐的步骤与文件管理规则。
 
 - [中文标签与播放中搜索修复](./metadata-compatibility.md)：本地样本分析、兼容策略和搜索栏回归验证。
+
+- [音乐库管理与存储清理](./library-management.md)：多选删除、传入文件与封面清理、导入记录及失败重试。

@@ -65,4 +65,28 @@ final class ZuneyraUITests: XCTestCase {
         app.buttons["暂停"].firstMatch.tap()
     }
 
+    @MainActor
+    func testMultiSelectDeleteAndManagementEntry() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-test-playback"]
+        app.launch()
+        let select = app.buttons["selectTracks"].firstMatch
+        XCTAssertTrue(select.waitForExistence(timeout: 15))
+        select.tap()
+        let track = app.buttons["选择 Search Regression"]
+        XCTAssertTrue(track.waitForExistence(timeout: 10))
+        track.tap()
+        app.buttons["deleteSelectedTracks"].firstMatch.tap()
+        let confirm = app.buttons["删除音频副本"].firstMatch
+        XCTAssertTrue(confirm.waitForExistence(timeout: 10))
+        confirm.tap()
+        let result = app.buttons["好"].firstMatch
+        XCTAssertTrue(result.waitForExistence(timeout: 10))
+        result.tap()
+        XCTAssertFalse(app.buttons["播放 Search Regression"].exists)
+        app.buttons["libraryManagement"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["当前设备保存的文件大小"].waitForExistence(timeout: 10))
+        app.buttons["完成"].firstMatch.tap()
+    }
+
 }
