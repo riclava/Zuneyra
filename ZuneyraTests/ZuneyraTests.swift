@@ -105,4 +105,111 @@ struct ZuneyraTests {
         #expect(store.errorMessage == nil)
     }
 
+    @Test func finderImportRemembersFilesAndPreservesSources() async throws {
+        let (root, source) = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let documents = root.appending(path: "Documents")
+        let album = documents.appending(path: "My Album")
+        try FileManager.default.createDirectory(at: album, withIntermediateDirectories: true)
+        let received = album.appending(path: "Quiet Test.wav")
+        try FileManager.default.copyItem(at: source, to: received)
+        try Data("ignore".utf8).write(to: documents.appending(path: "notes.txt"))
+        try Data("ignore".utf8).write(to: documents.appending(path: ".partial.wav"))
+        let library = root.appending(path: "Library")
+        let repository = MusicRepository(root: library)
+        let first = try await repository.importSharedDocuments(from: documents) { _, _ in }
+        #expect(first.added == 1)
+        #expect(first.failures.isEmpty)
+        #expect(FileManager.default.fileExists(atPath: received.path))
+        // A new repository simulates reopening the app; its private ledger persists.
+        let reopened = MusicRepository(root: library)
+        let second = try await reopened.importSharedDocuments(from: documents) { _, _ in }
+        #expect(second.added == 0)
+        #expect(second.duplicates == 0)
+        let renamed = documents.appending(path: "Another name.wav")
+        try FileManager.default.copyItem(at: source, to: renamed)
+        let duplicate = try await reopened.importSharedDocuments(from: documents) { _, _ in }
+        #expect(duplicate.duplicates == 1)
+        #expect(try await reopened.load().count == 1)
+        try FileManager.default.removeItem(at: documents)
+        let track = try #require(try await reopened.load().first)
+        let managed = await reopened.mediaURL(for: track)
+        #expect(FileManager.default.fileExists(atPath: managed.path))
+    }
+
+    @Test func finderImportRetriesRepairedFiles() async throws {
+        let (root, source) = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let documents = root.appending(path: "Documents")
+        try FileManager.default.createDirectory(at: documents, withIntermediateDirectories: true)
+        let broken = documents.appending(path: "Broken.wav")
+        try Data("incomplete".utf8).write(to: broken)
+        let repository = MusicRepository(root: root.appending(path: "Library"))
+        let first = try await repository.importSharedDocuments(from: documents) { _, _ in }
+        #expect(first.failures.count == 1)
+        #expect(try await repository.load().isEmpty)
+        try Data(contentsOf: source).write(to: broken, options: .atomic)
+        let repaired = try await repository.importSharedDocuments(from: documents) { _, _ in }
+        #expect(repaired.added == 1)
+        #expect(repaired.failures.isEmpty)
+        let unchanged = try await repository.importSharedDocuments(from: documents) { _, _ in }
+        #expect(unchanged.added == 0 && unchanged.duplicates == 0)
+    }
+
+    @Test @MainActor func finderImportRunsOnLoadAndForegroundScan() async throws {
+        let (root, source) = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let documents = root.appending(path: "Documents")
+        try FileManager.default.createDirectory(at: documents, withIntermediateDirectories: true)
+        try FileManager.default.copyItem(at: source, to: documents.appending(path: "First.wav"))
+        let suite = UUID().uuidString
+        let preferences = try #require(UserDefaults(suiteName: suite))
+        defer { preferences.removePersistentDomain(forName: suite) }
+        let store = PlayerStore(repository: MusicRepository(root: root.appending(path: "Library")), preferences: preferences, sharedDocumentsURL: documents)
+        await store.load()
+        for _ in 0..<100 { if !store.isImporting { break }; try await Task.sleep(for: .milliseconds(50)) }
+        #expect(store.tracks.count == 1)
+        store.importReport = nil
+        var audio = try Data(contentsOf: source); audio[audio.count - 1] = 1
+        try audio.write(to: documents.appending(path: "Second.wav"))
+        store.scanSharedDocuments()
+        store.scanSharedDocuments() // Repeated scene activation cannot start a second import.
+        for _ in 0..<100 { if !store.isImporting { break }; try await Task.sleep(for: .milliseconds(50)) }
+        #expect(store.tracks.count == 2)
+        #expect(store.importReport?.added == 1)
+        #expect(store.errorMessage == nil)
+    }
+
+    @Test func finderImportDefersChangingFiles() async throws {
+        let (root, source) = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let documents = root.appending(path: "Documents")
+        try FileManager.default.createDirectory(at: documents, withIntermediateDirectories: true)
+        let received = documents.appending(path: "Transferring.wav")
+        try FileManager.default.copyItem(at: source, to: received)
+        let repository = MusicRepository(root: root.appending(path: "Library"))
+        // Change the file after discovery, without depending on scheduler timing.
+        let pending = try await repository.importSharedDocuments(from: documents) { completed, _ in
+            guard completed == 0 else { return }
+            do {
+                var bytes = try Data(contentsOf: received); bytes[bytes.count - 1] = 1
+                try bytes.write(to: received, options: .atomic)
+                try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(10)], ofItemAtPath: received.path)
+            } catch { Issue.record(error) }
+        }
+        #expect(pending.added == 0)
+        #expect(pending.failures.isEmpty)
+        #expect(try await repository.load().isEmpty)
+        let completed = try await repository.importSharedDocuments(from: documents) { _, _ in }
+        #expect(completed.added == 1)
+        #expect(completed.failures.isEmpty)
+    }
+
+    #if os(iOS)
+    @Test func installedAppEnablesFinderFileSharing() {
+        #expect(Bundle.main.object(forInfoDictionaryKey: "UIFileSharingEnabled") as? Bool == true)
+        #expect(Bundle.main.object(forInfoDictionaryKey: "LSSupportsOpeningDocumentsInPlace") as? Bool == true)
+    }
+    #endif
+
 }

@@ -56,7 +56,10 @@ struct ContentView: View {
         .sheet(isPresented: $showingPlayer) { fullPlayer }
         .sheet(isPresented: $showingQueue) { queueView }
         .sheet(isPresented: Binding(get: { store.importReport != nil }, set: { if !$0 { store.importReport = nil } })) { importResults }
-        .onChange(of: scenePhase) { _, value in if value != .active { store.saveSession() } }
+        .onChange(of: scenePhase) { _, value in
+            if value == .active { store.scanSharedDocuments() }
+            else { store.saveSession() }
+        }
         #if os(macOS)
         .frame(minWidth: 800, minHeight: 580)
         #endif
@@ -96,6 +99,10 @@ struct ContentView: View {
                         } description: { Text("导入你的音乐文件，收藏每一种节奏。\nFLAC · ALAC · MP3 · AAC · WAV · AIFF") } actions: {
                             Button("导入音乐", systemImage: "plus") { importing = true }.buttonStyle(.borderedProminent).disabled(store.isImporting)
                         }.padding(.vertical, 55)
+                        #if os(iOS)
+                        Label("也可以连接 Mac，在 Finder → iPhone → 文件 → Zuneyra 中拖入音乐，传输完成后打开本应用。", systemImage: "cable.connector")
+                            .font(.footnote).foregroundStyle(.secondary)
+                        #endif
                     } else if filtered.isEmpty {
                         ContentUnavailableView("这里还很安静", systemImage: "music.note", description: Text(query.isEmpty ? "收藏喜欢的歌曲，让它们出现在这里。" : "试试其他歌曲、专辑或艺术家名称。"))
                     } else if section == .albums && selectedAlbum == nil && query.isEmpty {
@@ -128,7 +135,16 @@ struct ContentView: View {
             .searchable(text: $query, prompt: "搜索你的音乐")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
+                    #if os(iOS)
+                    Menu {
+                        Button("选择文件或文件夹", systemImage: "folder") { importing = true }
+                        Button("导入电脑传入的音乐", systemImage: "cable.connector") { store.scanSharedDocuments() }
+                    } label: {
+                        Label("导入音乐", systemImage: "plus")
+                    }.disabled(store.isImporting).accessibilityIdentifier("importMusic")
+                    #else
                     Button("导入音乐", systemImage: "plus") { importing = true }.disabled(store.isImporting).accessibilityIdentifier("importMusic")
+                    #endif
                 }
             }
         }

@@ -17,6 +17,7 @@ final class PlayerStore {
     private(set) var queue: [Track] = []
     let repository: MusicRepository
     private let preferences: UserDefaults
+    private let sharedDocumentsURL: URL?
     private let resources = PlaybackResources()
     private var player: AVPlayer { resources.player }
     private var itemObservation: NSKeyValueObservation?
@@ -29,9 +30,10 @@ final class PlayerStore {
     private var importTask: Task<Void, Never>?
     private var resumeAfterInterruption = false
 
-    init(repository: MusicRepository = MusicRepository(), preferences: UserDefaults = .standard) {
+    init(repository: MusicRepository = MusicRepository(), preferences: UserDefaults = .standard, sharedDocumentsURL: URL? = SharedDocumentsLocation.defaultURL) {
         self.preferences = preferences
         self.repository = repository
+        self.sharedDocumentsURL = sharedDocumentsURL
         resources.timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.5, preferredTimescale: 600), queue: .main) { [weak self] time in
             Task { @MainActor [weak self] in
                 guard let self, !self.isPreparing, time.seconds.isFinite else { return }
@@ -87,6 +89,25 @@ final class PlayerStore {
             }
         } catch { errorMessage = error.localizedDescription }
         isLoading = false
+        scanSharedDocuments()
+    }
+
+    func scanSharedDocuments() {
+        guard !isLoading, !isImporting, let sharedDocumentsURL else { return }
+        isImporting = true
+        importProgress = "正在检查电脑传入的音乐…"
+        importTask = Task {
+            do {
+                let report = try await repository.importSharedDocuments(from: sharedDocumentsURL) { [weak self] completed, total in
+                    await MainActor.run { [weak self] in self?.importProgress = "正在导入电脑音乐 \(completed) / \(total)" }
+                }
+                tracks = try await repository.load()
+                if report.added > 0 || report.duplicates > 0 || !report.failures.isEmpty { importReport = report }
+            } catch is CancellationError { /* The next scan can retry unprocessed files. */ }
+            catch { errorMessage = error.localizedDescription }
+            isImporting = false
+            importTask = nil
+        }
     }
 
     func importFiles(_ urls: [URL]) {
@@ -208,6 +229,16 @@ final class PlayerStore {
             Task { @MainActor [weak self] in self?.seek(to: value) }; return .success
         }
         resources.remoteTargets.append((center.changePlaybackPositionCommand, token))
+    }
+}
+
+enum SharedDocumentsLocation {
+    static var defaultURL: URL? {
+        #if os(iOS)
+        URL.documentsDirectory
+        #else
+        nil
+        #endif
     }
 }
 

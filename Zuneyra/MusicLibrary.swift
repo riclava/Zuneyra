@@ -105,6 +105,69 @@ actor MusicRepository {
         return try Data(contentsOf: root.appending(path: "Media/\(artwork)"))
     }
 
+    private struct SharedFileStamp: Codable, Equatable {
+        let size: Int
+        let modified: Date
+
+        init(url: URL) throws {
+            // Enumeration URLs cache resource values. Re-read the filesystem on
+            // every comparison or a transfer may incorrectly appear unchanged.
+            var freshURL = url
+            freshURL.removeAllCachedResourceValues()
+            let values = try freshURL.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+            guard let size = values.fileSize, let modified = values.contentModificationDate else {
+                throw CocoaError(.fileReadUnknown)
+            }
+            self.size = size
+            self.modified = modified
+        }
+    }
+
+    /// Finder exposes Documents only; the database, ledger and managed copies stay private.
+    /// Successful and duplicate imports are remembered, while failed/changed files can retry.
+    func importSharedDocuments(from directory: URL, progress: @Sendable (Int, Int) async -> Void) async throws -> ImportReport {
+        var hashes = Set(try load().map(\.digest))
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let ledgerURL = root.appending(path: "shared-imports.json")
+        var ledger: [String: SharedFileStamp] = [:]
+        if FileManager.default.fileExists(atPath: ledgerURL.path) {
+            ledger = try JSONDecoder().decode([String: SharedFileStamp].self, from: Data(contentsOf: ledgerURL))
+        }
+        var candidates: [(URL, SharedFileStamp)] = []
+        guard let enumerator = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey], options: [.skipsHiddenFiles, .skipsPackageDescendants]) else {
+            throw failure("无法读取电脑传入的文件")
+        }
+        while let url = enumerator.nextObject() as? URL {
+            let values = try url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+            if values.isSymbolicLink == true { enumerator.skipDescendants(); continue }
+            guard values.isRegularFile == true, Self.extensions.contains(url.pathExtension.lowercased()) else { continue }
+            let stamp = try SharedFileStamp(url: url)
+            if ledger[url.path] != stamp { candidates.append((url, stamp)) }
+        }
+        guard !candidates.isEmpty else { return ImportReport() }
+        await progress(0, candidates.count)
+        // Finder can still be writing when the app becomes active. Defer files that
+        // change during this observation window, and verify again around the copy.
+        try await Task.sleep(for: .milliseconds(750))
+        var report = ImportReport()
+        for (index, candidate) in candidates.sorted(by: { $0.0.path < $1.0.path }).enumerated() {
+            if Task.isCancelled { break }
+            let (url, stamp) = candidate
+            guard (try? SharedFileStamp(url: url)) == stamp else { continue }
+            do {
+                if let track = try await ingest(url, knownHashes: hashes, expectedSource: stamp) {
+                    hashes.insert(track.digest)
+                    report.added += 1
+                } else { report.duplicates += 1 }
+                ledger[url.path] = stamp
+                try JSONEncoder().encode(ledger).write(to: ledgerURL, options: .atomic)
+            } catch is CancellationError { break }
+            catch { report.failures.append("\(url.lastPathComponent)：\(error.localizedDescription)") }
+            await progress(index + 1, candidates.count)
+        }
+        return report
+    }
+
     func importFiles(_ urls: [URL], progress: @Sendable (Int, Int) async -> Void) async throws -> ImportReport {
         let existing = try load()
         var hashes = Set(existing.map(\.digest))
@@ -134,7 +197,7 @@ actor MusicRepository {
         return report
     }
 
-    private func ingest(_ source: URL, knownHashes: Set<String>) async throws -> Track? {
+    private func ingest(_ source: URL, knownHashes: Set<String>, expectedSource: SharedFileStamp? = nil) async throws -> Track? {
         let id = UUID()
         let name = "\(id.uuidString).\(source.pathExtension.lowercased())"
         let staging = root.appending(path: "Staging/\(name)")
@@ -146,6 +209,9 @@ actor MusicRepository {
             do { try FileManager.default.copyItem(at: coordinated, to: staging) } catch { copyError = error }
         }
         if let error = coordinationError ?? copyError as NSError? { throw error }
+        if let expectedSource, try SharedFileStamp(url: source) != expectedSource {
+            throw failure("文件仍在传输，请传输完成后重试")
+        }
         let file = try FileHandle(forReadingFrom: staging)
         defer { try? file.close() }
         var hasher = SHA256()
