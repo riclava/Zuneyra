@@ -259,14 +259,7 @@ actor MusicRepository {
         if let expectedSource, try SharedFileStamp(url: source) != expectedSource {
             throw failure("文件仍在传输，请传输完成后重试")
         }
-        let file = try FileHandle(forReadingFrom: staging)
-        defer { try? file.close() }
-        var hasher = SHA256()
-        while let data = try file.read(upToCount: 1_048_576), !data.isEmpty {
-            try Task.checkCancellation()
-            hasher.update(data: data)
-        }
-        let digest = hasher.finalize().map { String(format: "%02x", $0) }.joined()
+        let digest = try contentDigest(staging)
         if knownHashes.contains(digest) { return nil }
         let asset = AVURLAsset(url: staging)
         guard try await asset.load(.isPlayable), !(try await asset.loadTracks(withMediaType: .audio)).isEmpty else { throw failure("无法解码此音频") }
@@ -490,7 +483,14 @@ extension MusicRepository {
         let file = try FileHandle(forReadingFrom: url)
         defer { try? file.close() }
         var hasher = SHA256()
-        while let bytes = try file.read(upToCount: 1_048_576), !bytes.isEmpty { hasher.update(data: bytes) }
+        // FileHandle's Objective-C buffers can outlive each Swift Data value.
+        // Drain them per chunk so a long actor task cannot retain whole albums.
+        while try autoreleasepool(invoking: {
+            try Task.checkCancellation()
+            guard let bytes = try file.read(upToCount: 1_048_576), !bytes.isEmpty else { return false }
+            hasher.update(data: bytes)
+            return true
+        }) {}
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
     func cleanImportedDocuments(_ directory: URL) throws -> CleanupResult {

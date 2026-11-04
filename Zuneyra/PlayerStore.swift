@@ -158,7 +158,9 @@ final class PlayerStore {
                 }
                 tracks = try await repository.load()
                 history = try await repository.importHistory()
-                if report.added > 0 || report.duplicates > 0 || !report.failures.isEmpty || report.cancelled { importReport = report }
+                // Foreground scans should not interrupt the user for duplicate-only results.
+                // Keep those results in history; manual imports still show their full report.
+                if report.added > 0 || !report.failures.isEmpty || report.cancelled { importReport = report }
             } catch is CancellationError { /* The next scan can retry unprocessed files. */ }
             catch { errorMessage = error.localizedDescription }
             isImporting = false

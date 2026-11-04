@@ -186,6 +186,17 @@ struct ZuneyraTests {
         #expect(store.tracks.count == 2)
         #expect(store.importReport?.added == 1)
         #expect(store.errorMessage == nil)
+        store.importReport = nil
+        try FileManager.default.copyItem(at: source, to: documents.appending(path: "Duplicate.wav"))
+        store.scanSharedDocuments()
+        for _ in 0..<100 { if !store.isImporting { break }; try await Task.sleep(for: .milliseconds(50)) }
+        #expect(!store.isImporting)
+        #expect(store.tracks.count == 2)
+        #expect(store.importReport == nil)
+        #expect(store.history.first?.report.duplicates == 1)
+        store.importFiles([source])
+        for _ in 0..<100 { if !store.isImporting { break }; try await Task.sleep(for: .milliseconds(50)) }
+        #expect(store.importReport?.duplicates == 1)
     }
 
     @Test func finderImportDefersChangingFiles() async throws {
