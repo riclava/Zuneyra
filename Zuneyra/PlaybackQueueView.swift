@@ -2,20 +2,34 @@ import SwiftUI
 
 struct PlaybackModesView: View {
     @Environment(PlayerStore.self) private var store
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.dynamicTypeSize) private var typeSize
     var body: some View {
-        HStack {
+        let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 12))
+        layout {
             Button { store.toggleShuffle() } label: {
-                Label(store.queueState.shuffle ? "随机播放" : "顺序播放", systemImage: store.queueState.shuffle ? "shuffle" : "arrow.right").frame(minHeight: 44)
+                Label(store.queueState.shuffle ? "随机播放" : "顺序播放", systemImage: store.queueState.shuffle ? "shuffle" : "arrow.right")
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 3)
+                    .background(store.queueState.shuffle ? Sunset.accent(scheme).opacity(0.12) : Sunset.panel(scheme), in: RoundedRectangle(cornerRadius: 12))
             }
             .accessibilityIdentifier("shuffleMode")
-            .foregroundStyle(store.queueState.shuffle ? Sunset.coral : .secondary)
-            Spacer()
+            .accessibilityValue(store.queueState.shuffle ? "已开启随机播放" : "按队列顺序播放")
+            .accessibilityHint("切换顺序播放和随机播放")
+            .foregroundStyle(store.queueState.shuffle ? Sunset.accent(scheme) : .primary)
             Button { store.cycleRepeatMode() } label: {
-                Label(store.queueState.repeatMode.title, systemImage: store.queueState.repeatMode.symbol).frame(minHeight: 44)
+                Label(store.queueState.repeatMode.title, systemImage: store.queueState.repeatMode.symbol)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 3)
+                    .background(store.queueState.repeatMode == .off ? Sunset.panel(scheme) : Sunset.accent(scheme).opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
             }
             .accessibilityIdentifier("repeatMode")
-            .foregroundStyle(store.queueState.repeatMode == .off ? .secondary : Sunset.coral)
-        }.buttonStyle(.plain).font(.subheadline).disabled(store.isManaging)
+            .accessibilityValue(store.queueState.repeatMode.title)
+            .accessibilityHint("依次切换不循环、列表循环和单曲循环")
+            .foregroundStyle(store.queueState.repeatMode == .off ? .primary : Sunset.accent(scheme))
+        }.buttonStyle(.plain).font(.subheadline.weight(.medium)).disabled(store.isManaging)
     }
 }
 
@@ -59,7 +73,7 @@ struct PlaybackQueueView: View {
                     } header: {
                         Text("接下来 · \(store.queueState.upcoming.count) 首")
                     } footer: {
-                        Text("从队列移除不会删除音乐库中的歌曲。")
+                        Text(sorting ? "拖动歌曲右侧的把手调整顺序，完成后点击“完成排序”。" : "从队列移除不会删除音乐库中的歌曲。")
                     }
                 }
                 .scrollContentBackground(.hidden)
@@ -71,22 +85,34 @@ struct PlaybackQueueView: View {
         }
         .background(Sunset.background(scheme))
         .navigationTitle("播放队列")
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
         .toolbar {
             ToolbarItem(placement: .automatic) {
-                Menu {
-                    #if os(iOS)
-                    Button(sorting ? "完成排序" : "调整顺序", systemImage: "arrow.up.arrow.down") { sorting.toggle() }
-                    #endif
-                    Button("清空待播", systemImage: "text.badge.minus") { store.clearUpcoming() }
-                } label: { Label("队列操作", systemImage: "ellipsis.circle") }
-                .disabled(store.queueState.upcoming.isEmpty || store.isManaging)
-                .accessibilityIdentifier("queueActions")
+                if sorting {
+                    Button("完成排序") { sorting = false }
+                        .accessibilityIdentifier("finishQueueSorting")
+                } else {
+                    Menu {
+                        #if os(iOS)
+                        Button("调整顺序", systemImage: "arrow.up.arrow.down") { sorting = true }
+                            .disabled(store.queueState.upcoming.count < 2)
+                        #endif
+                        Button("清空待播", systemImage: "text.badge.minus") { store.clearUpcoming() }
+                    } label: { Label("队列操作", systemImage: "ellipsis.circle") }
+                    .disabled(store.queueState.upcoming.isEmpty || store.isManaging)
+                    .accessibilityIdentifier("queueActions")
+                }
             }
             if showsClose {
                 ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } }
             }
         }
-        .tint(Sunset.coral)
+        .tint(Sunset.accent(scheme))
+        .onChange(of: store.queueState.upcoming.isEmpty) { _, empty in
+            if empty { sorting = false }
+        }
     }
 
     private func queueRow(_ entry: QueueEntry, current: Bool = false, pending: Bool = false) -> some View {
@@ -99,12 +125,12 @@ struct PlaybackQueueView: View {
                         HStack(spacing: 12) {
                             CoverArt(track: track, repository: store.repository).frame(width: 42, height: 42)
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(track.title).font(.body.weight(.medium)).foregroundStyle(current ? Sunset.coral : .primary)
+                                Text(track.title).font(.body.weight(.medium)).foregroundStyle(current ? Sunset.accent(scheme) : .primary)
                                 Text(track.artist).font(.caption).foregroundStyle(.secondary)
-                            }.lineLimit(1)
+                            }.lineLimit(2).fixedSize(horizontal: false, vertical: true)
                             Spacer(minLength: 0)
                             if current {
-                                Image(systemName: store.isPlaying ? "pause.fill" : "play.fill").foregroundStyle(Sunset.coral)
+                                Image(systemName: store.isPlaying ? "pause.fill" : "play.fill").foregroundStyle(Sunset.accent(scheme))
                             }
                         }.contentShape(Rectangle())
                     }
@@ -126,7 +152,7 @@ struct PlaybackQueueView: View {
                     .accessibilityLabel("队列操作 \(track.title)")
                     .accessibilityIdentifier("queueEntryActions-\(entry.id)")
                 }.padding(.vertical, 4)
-                    .listRowBackground(Sunset.panel(scheme))
+                    .listRowBackground(current ? Sunset.accent(scheme).opacity(0.08) : Sunset.panel(scheme))
                     .moveDisabled(!pending)
                     .deleteDisabled(!pending)
             }

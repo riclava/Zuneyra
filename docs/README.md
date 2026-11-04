@@ -16,6 +16,8 @@
 
 - [本地歌单](./playlists.md)：创建与编辑、歌曲添加入口、播放与 SQLite 升级规则。
 
+- [音乐库与播放器 UI / UX 优化](./ui-ux-refinement.md)：固定分类、搜索与排序、专辑播放顺序、播放器层级、深色与大字号适配及回归覆盖。
+
 - [iPhone 真机播放验收](./device-playback-validation.md)：后台、锁屏、蓝牙与耳机路由实测记录。
 
 - [CarPlay 首版](./carplay.md)：车载浏览、系统播放、连接恢复、构建方式与验收状态。

@@ -7,11 +7,12 @@ import UIKit
 #endif
 
 enum Sunset {
-    static let coral = Color(red: 0.85, green: 0.23, blue: 0.16)
+    static let coral = Color(red: 0.76, green: 0.23, blue: 0.16)
+    static func accent(_ scheme: ColorScheme) -> Color { scheme == .dark ? Color(red: 1, green: 0.62, blue: 0.49) : coral }
     static let peach = Color(red: 1, green: 0.70, blue: 0.61)
     static let amber = Color(red: 1, green: 0.79, blue: 0.30)
-    static func background(_ scheme: ColorScheme) -> Color { scheme == .dark ? Color(red: 0.13, green: 0.085, blue: 0.10) : Color(red: 1, green: 0.975, blue: 0.95) }
-    static func panel(_ scheme: ColorScheme) -> Color { scheme == .dark ? Color(red: 0.20, green: 0.13, blue: 0.15) : Color(red: 0.98, green: 0.92, blue: 0.88) }
+    static func background(_ scheme: ColorScheme) -> Color { scheme == .dark ? Color(red: 0.095, green: 0.085, blue: 0.08) : Color(red: 0.995, green: 0.982, blue: 0.96) }
+    static func panel(_ scheme: ColorScheme) -> Color { scheme == .dark ? Color(red: 0.155, green: 0.14, blue: 0.13) : Color(red: 0.955, green: 0.935, blue: 0.90) }
 }
 
 struct CoverArt: View {

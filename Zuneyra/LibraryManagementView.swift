@@ -31,7 +31,7 @@ struct LibraryManagementView: View {
                 .navigationTitle("音乐库管理")
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } } }
         }
-        .tint(Sunset.coral)
+        .tint(Sunset.accent(scheme))
         .task { await store.refreshManagement() }
         .onChange(of: store.isImporting) { _, active in if !active { Task { await store.refreshManagement() } } }
         .confirmationDialog("清理已入库的传入文件？", isPresented: $confirmIncoming, titleVisibility: .visible) {
@@ -59,7 +59,7 @@ struct LibraryManagementView: View {
 
     @ViewBuilder private var storageContent: some View {
         if let usage = store.storage {
-            Text(StorageUsage.formatted(usage.total)).font(.system(size: 38, weight: .bold)).foregroundStyle(Sunset.coral)
+            Text(StorageUsage.formatted(usage.total)).font(.largeTitle.bold()).foregroundStyle(Sunset.accent(scheme))
             Text("当前设备保存的文件大小").font(.subheadline).foregroundStyle(.secondary)
             VStack(spacing: 0) {
                 storageRow("音乐副本", bytes: usage.audio, icon: "music.note")

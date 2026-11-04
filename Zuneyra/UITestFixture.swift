@@ -26,9 +26,15 @@ import AVFoundation
                 buffer.floatChannelData![0][index] = Float(0.035 * sin(2 * .pi * 330 * time) * fade)
             }
         }
-        let titles = deviceCheck ? ["设备播放验收"] : ProcessInfo.processInfo.arguments.contains("--ui-test-queue") ? ["Search Regression", "Queue Second", "Queue Third"] : ["Search Regression"]
-        for (index, title) in titles.enumerated().reversed() {
-            let track = Track(id: UUID(), title: title, artist: "Generated Silence", album: "UI Fixture", albumArtist: "Generated Silence", trackNumber: index + 1, duration: duration, filename: "fixture-\(index).wav", digest: "ui-fixture-\(index)", artwork: nil, metadataRepairVersion: 1)
+        let libraryUX = !deviceCheck && ProcessInfo.processInfo.arguments.contains("--ui-test-library-ux")
+        let titles = deviceCheck ? ["设备播放验收"] : libraryUX || ProcessInfo.processInfo.arguments.contains("--ui-test-queue") ? ["Search Regression", "Queue Second", "Queue Third"] : ["Search Regression"]
+        let indexedTitles = Array(titles.enumerated())
+        // The UX fixture deliberately differs from album order, including tracks 2 and 10.
+        // Existing playback/playlist fixtures retain their original insertion order.
+        let insertionOrder = libraryUX ? indexedTitles : Array(indexedTitles.reversed())
+        for (index, title) in insertionOrder {
+            let trackNumber = libraryUX ? [1, 10, 2][index] : index + 1
+            let track = Track(id: UUID(), title: title, artist: "Generated Silence", album: "UI Fixture", albumArtist: "Generated Silence", trackNumber: trackNumber, duration: duration, filename: "fixture-\(index).wav", digest: "ui-fixture-\(index)", artwork: nil, metadataRepairVersion: 1)
             let url = await repository.mediaURL(for: track)
             let file = try AVAudioFile(forWriting: url, settings: format.settings)
             try file.write(from: buffer)

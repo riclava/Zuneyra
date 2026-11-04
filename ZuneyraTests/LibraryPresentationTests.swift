@@ -1,0 +1,77 @@
+import Foundation
+import Testing
+@testable import Zuneyra
+
+struct LibraryPresentationTests {
+    private func track(
+        _ index: Int,
+        title: String = "Song",
+        artist: String = "Artist",
+        album: String = "Album",
+        albumArtist: String = "Album Artist",
+        number: Int = 0,
+        filename: String = "song.flac"
+    ) -> Track {
+        Track(
+            id: UUID(uuidString: String(format: "00000000-0000-0000-0000-%012d", index))!,
+            title: title, artist: artist, album: album, albumArtist: albumArtist,
+            trackNumber: number, duration: 180, filename: filename,
+            digest: "digest-\(index)", artwork: nil
+        )
+    }
+
+    @Test func albumOrderUsesTrackNumbersAndPutsMissingNumbersLast() {
+        let first = track(1, title: "Opening", number: 1)
+        let second = track(2, title: "Track 2", number: 2)
+        let secondAlternate = track(3, title: "Track 10", number: 2)
+        let tenth = track(4, title: "Finale", number: 10)
+        let missing = track(5, title: "Bonus 10", number: 0)
+        let invalid = track(6, title: "Bonus 2", number: -1)
+        let input = [tenth, missing, secondAlternate, invalid, second, first]
+
+        #expect(LibraryPresentation.albumTracks(input) == [first, second, secondAlternate, tenth, invalid, missing])
+    }
+
+    @Test func titleAndArtistSortUseNaturalOrdering() {
+        let songTwo = track(1, title: "Song 2", artist: "Artist 10")
+        let songTen = track(2, title: "Song 10", artist: "Artist 2")
+        let sameArtist = track(3, title: "Song 3", artist: "Artist 2")
+        let input = [songTen, songTwo, sameArtist]
+
+        #expect(LibrarySongSort.title.apply(to: input) == [songTwo, sameArtist, songTen])
+        #expect(LibrarySongSort.artist.apply(to: input) == [sameArtist, songTen, songTwo])
+    }
+
+    @Test func equalTitlesUseFilenameThenIdentityForStableOrdering() {
+        let first = track(1, number: 1, filename: "take 2.flac")
+        let sameFilename = track(2, number: 1, filename: "take 2.flac")
+        let laterFilename = track(3, number: 1, filename: "take 10.flac")
+        let input = [laterFilename, sameFilename, first]
+        let expected = [first, sameFilename, laterFilename]
+
+        for sort in [LibrarySongSort.title, .artist] {
+            #expect(sort.apply(to: input) == expected)
+            #expect(sort.apply(to: Array(input.reversed())) == expected)
+        }
+        #expect(LibraryPresentation.albumTracks(input) == expected)
+        #expect(LibraryPresentation.albumTracks(Array(input.reversed())) == expected)
+    }
+
+    @Test func recentSortPreservesRepositoryOrder() {
+        let input = [track(3, title: "Third"), track(1, title: "First"), track(2, title: "Second")]
+        #expect(LibrarySongSort.recent.apply(to: input) == input)
+    }
+
+    @Test func searchTrimsWhitespaceAndFindsEveryDisplayedMetadataFieldAndFilename() {
+        let song = track(
+            1, title: "晚风", artist: "Soloist", album: "夜航",
+            albumArtist: "Ensemble", filename: "live_02.flac"
+        )
+
+        for query in ["风", "SOLOIST", "夜航", "ensemble", " \nLIVE_02.FLAC\t ", "", " \n\t "] {
+            #expect(LibraryPresentation.matches(song, query: query))
+        }
+        #expect(!LibraryPresentation.matches(song, query: "missing"))
+        #expect(!LibraryPresentation.matches(song, query: "live_03"))
+    }
+}
