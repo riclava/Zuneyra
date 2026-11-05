@@ -723,6 +723,8 @@ final class PlayerStore {
             artworkTrackID = current.id; artworkTask?.cancel()
             // Publish a real sleeve immediately, including for files without embedded art.
             let renderer = ImageRenderer(content: AlbumSleeve(track: current).frame(width: 600, height: 600))
+            // The sleeve fills its bounds; avoid unused alpha when Now Playing encodes it.
+            renderer.isOpaque = true
             nowPlayingArtwork = renderer.cgImage.map { Self.mediaArtwork($0) }
             artworkTask = Task { [weak self, repository] in
                 guard let data = try? await repository.artworkData(for: current), !Task.isCancelled,

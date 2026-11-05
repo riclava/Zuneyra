@@ -1,0 +1,34 @@
+[
+  {
+    "file": "header-en.png",
+    "size": [
+      3840,
+      1646
+    ],
+    "sha256": "008dec071e0cbd6ea4a0ec1aa339400ee6f11c0a95c81c91a3bba4c366681b35"
+  },
+  {
+    "file": "header-zh-Hans.png",
+    "size": [
+      3840,
+      1646
+    ],
+    "sha256": "68d7e361c89b00e3711a16c0a2bfecf88c90d99ae5fef4a583e5beb3f0ba31d6"
+  },
+  {
+    "file": "search-en.png",
+    "size": [
+      1920,
+      1280
+    ],
+    "sha256": "64c852846373ffb61b2b480bfa3f9e5fb730389657895c8ee9acbc3e83d611a6"
+  },
+  {
+    "file": "search-zh-Hans.png",
+    "size": [
+      1920,
+      1280
+    ],
+    "sha256": "3413e740f56fb84b4753c549859782486ca4fecdcedafc5c73dba2a944d60776"
+  }
+]

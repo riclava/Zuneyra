@@ -12,16 +12,17 @@ struct CollectionFeatureView: View {
     let disabled: Bool
     var play: () -> Void
     var browse: () -> Void
+    var compact = false
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
             if !typeSize.isAccessibilitySize {
-                HStack(spacing: 36) {
-                    VStack(alignment: .leading, spacing: 22) {
+                HStack(spacing: compact ? 24 : 36) {
+                    VStack(alignment: .leading, spacing: compact ? 14 : 22) {
                         heading
                         actions
                     }.frame(minWidth: 230, maxWidth: .infinity, alignment: .leading)
-                    sleeve.frame(width: 208, height: 208)
+                    sleeve.frame(width: compact ? 160 : 208, height: compact ? 160 : 208)
                 }
             }
             VStack(alignment: .leading, spacing: 20) {
@@ -37,7 +38,7 @@ struct CollectionFeatureView: View {
                 actions
             }
         }
-        .padding(24)
+        .padding(compact ? 20 : 24)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Sunset.panel(scheme).opacity(0.65), in: RoundedRectangle(cornerRadius: 12))
     }

@@ -1,0 +1,218 @@
+[
+  {
+    "file": "zh-Hans/iphone/01-library.png",
+    "size": [
+      1320,
+      2868
+    ],
+    "mode": "RGB",
+    "sha256": "adb920363f1dd45d972f8d26095fe4a6966c66517a60c304c188cc2f8ddf5a33"
+  },
+  {
+    "file": "zh-Hans/iphone/02-album.png",
+    "size": [
+      1320,
+      2868
+    ],
+    "mode": "RGB",
+    "sha256": "1152db1b89da7c91b0007a81ca737c084b401e1b79e105fe96fe7da88179d37e"
+  },
+  {
+    "file": "zh-Hans/iphone/03-player.png",
+    "size": [
+      1320,
+      2868
+    ],
+    "mode": "RGB",
+    "sha256": "cf353c0c75619c25ad37d7526b9dbead1e469655c44e5dd993c2a4fcd7d7b18a"
+  },
+  {
+    "file": "zh-Hans/iphone/04-queue.png",
+    "size": [
+      1320,
+      2868
+    ],
+    "mode": "RGB",
+    "sha256": "2cc95b8ab201763830068fff234bb295d3999f25f18519bec27f99c6e37ff914"
+  },
+  {
+    "file": "zh-Hans/ipad/01-library.png",
+    "size": [
+      2752,
+      2064
+    ],
+    "mode": "RGB",
+    "sha256": "89b223d4942599483ab85fc6c16a8f51a3cb79e6f4e58955ea32ca6c2170e7ae"
+  },
+  {
+    "file": "zh-Hans/ipad/02-album.png",
+    "size": [
+      2752,
+      2064
+    ],
+    "mode": "RGB",
+    "sha256": "cbf289a72c2a4e3473bf299e62b01a8e397dae99eb84c9ed0eb901bf293f1174"
+  },
+  {
+    "file": "zh-Hans/ipad/03-player.png",
+    "size": [
+      2752,
+      2064
+    ],
+    "mode": "RGB",
+    "sha256": "04ab39978118c759956a0bf119ed9a1f2d2ae25d7fe62c48afdb896c064c7769"
+  },
+  {
+    "file": "zh-Hans/ipad/04-queue.png",
+    "size": [
+      2752,
+      2064
+    ],
+    "mode": "RGB",
+    "sha256": "a14fe654109876e1eae132fc0c3483fe8cb03df285343135ad1e463301d18abc"
+  },
+  {
+    "file": "zh-Hans/macos/01-library.png",
+    "size": [
+      2560,
+      1600
+    ],
+    "mode": "RGB",
+    "sha256": "b1c153f264cebbd30599e74ae395cc3876aeff4ef98d5e714ff793b37d88a85b"
+  },
+  {
+    "file": "zh-Hans/macos/02-album.png",
+    "size": [
+      2560,
+      1600
+    ],
+    "mode": "RGB",
+    "sha256": "e19eb7eaec7d6578dbf6b1de3dba8c612b9b57a5d585aa72b8e2f127a60621c6"
+  },
+  {
+    "file": "zh-Hans/macos/03-player.png",
+    "size": [
+      2560,
+      1600
+    ],
+    "mode": "RGB",
+    "sha256": "b38849ab304d9b44c79d439de2315ceb395380516b3d8abbda5a956a57b69cd8"
+  },
+  {
+    "file": "zh-Hans/macos/04-queue.png",
+    "size": [
+      2560,
+      1600
+    ],
+    "mode": "RGB",
+    "sha256": "de1b192f6561bd9bc8a8cf3453862185b9d0ae1ce25f38dc0a16647d498aa6f1"
+  },
+  {
+    "file": "en/iphone/01-library.png",
+    "size": [
+      1320,
+      2868
+    ],
+    "mode": "RGB",
+    "sha256": "560fa8ee2d000cbcf3d9c049f60163830482a9335adfa5045aabab113a2e7218"
+  },
+  {
+    "file": "en/iphone/02-album.png",
+    "size": [
+      1320,
+      2868
+    ],
+    "mode": "RGB",
+    "sha256": "3b8384b2dff9931716639bdaf5713dcf2004c970ac3755e10c85b5cb656a1c4a"
+  },
+  {
+    "file": "en/iphone/03-player.png",
+    "size": [
+      1320,
+      2868
+    ],
+    "mode": "RGB",
+    "sha256": "f25620f65d89b3f592bcc0c1667480b5f72c9ee39fa0d62823f110e299752579"
+  },
+  {
+    "file": "en/iphone/04-queue.png",
+    "size": [
+      1320,
+      2868
+    ],
+    "mode": "RGB",
+    "sha256": "9244a85a5afb64dc11a5e6f5eeaaade95e5f98eb79bdcfde2642135a766ef6d3"
+  },
+  {
+    "file": "en/ipad/01-library.png",
+    "size": [
+      2752,
+      2064
+    ],
+    "mode": "RGB",
+    "sha256": "ea4a5833db012578343928fec5aa972c6da256d7a53d90fa0e4f0aead2f0ef70"
+  },
+  {
+    "file": "en/ipad/02-album.png",
+    "size": [
+      2752,
+      2064
+    ],
+    "mode": "RGB",
+    "sha256": "befefe6735eecb93ff88d7d8a40461b0b3dec7356ab556d7b6a8c23ba6338158"
+  },
+  {
+    "file": "en/ipad/03-player.png",
+    "size": [
+      2752,
+      2064
+    ],
+    "mode": "RGB",
+    "sha256": "63412c82d8e9550fc8b7d1a30e43bf3a105361f80477164962d431c60c22da7b"
+  },
+  {
+    "file": "en/ipad/04-queue.png",
+    "size": [
+      2752,
+      2064
+    ],
+    "mode": "RGB",
+    "sha256": "f4ec94d0ee9f5e997ae58b6a68d25dbafac69bda1fc6ce3149db0d7ac21784c2"
+  },
+  {
+    "file": "en/macos/01-library.png",
+    "size": [
+      2560,
+      1600
+    ],
+    "mode": "RGB",
+    "sha256": "9f6a69da0bd54f227e640889fbc3e9f090e27906f41a70cbb1e72ddee59141fa"
+  },
+  {
+    "file": "en/macos/02-album.png",
+    "size": [
+      2560,
+      1600
+    ],
+    "mode": "RGB",
+    "sha256": "c65a746ae2ad6b6d5adb27fd3530cbe889410474721673c70751aa768d489f31"
+  },
+  {
+    "file": "en/macos/03-player.png",
+    "size": [
+      2560,
+      1600
+    ],
+    "mode": "RGB",
+    "sha256": "7c32e8c9ee479b43668cf344fe041f3a3b3f6945117bc18e26624b4e36f5b93b"
+  },
+  {
+    "file": "en/macos/04-queue.png",
+    "size": [
+      2560,
+      1600
+    ],
+    "mode": "RGB",
+    "sha256": "65ccfb1f738e5448b1c8c88b3166423fe93335f23946623206d2bc7589446b8a"
+  }
+]

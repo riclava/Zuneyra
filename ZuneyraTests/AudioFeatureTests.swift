@@ -62,8 +62,15 @@ struct AudioFeatureTests {
     @Test func englishCatalogIncludesPluralForms() throws {
         let location = try #require(Bundle.main.url(forResource: "en", withExtension: "lproj"))
         let english = try #require(Bundle(url: location))
-        let count = 1, duration = "3 min"
-        #expect(String(localized: "\(count) 首 · \(duration)", bundle: english, locale: Locale(identifier: "en")) == "1 song · 3 min")
+        let duration = "3 min"
+        for (count, expected) in [(0, "0 songs · 3 min"), (1, "1 song · 3 min"), (2, "2 songs · 3 min")] {
+            #expect(String(localized: "\(count) 首 · \(duration)", bundle: english, locale: Locale(identifier: "en")) == expected)
+        }
+        #expect(english.localizedString(forKey: "收藏分类", value: nil, table: nil) == "Favorites")
+        #expect(english.localizedString(forKey: "私人收藏", value: nil, table: nil) == "PRIVATE COLLECTION")
+        let chineseLocation = try #require(Bundle.main.url(forResource: "zh-Hans", withExtension: "lproj"))
+        let chinese = try #require(Bundle(url: chineseLocation))
+        #expect(chinese.localizedString(forKey: "私人收藏", value: nil, table: nil) == "私人收藏")
         #expect(english.localizedString(forKey: "音乐库管理", value: nil, table: nil) == "Manage Library")
         #expect(english.localizedString(forKey: "导出音乐库备份…", value: nil, table: nil) == "Export Library Backup…")
     }

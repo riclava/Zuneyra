@@ -6,6 +6,7 @@ struct ContentView: View {
     @Environment(\.colorScheme) private var scheme
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var availableSize: CGSize = .zero
     @State private var section: LibrarySection = .albums
     @State private var navigationGeneration = 0
     @State private var query = ""
@@ -59,23 +60,40 @@ struct ContentView: View {
         #endif
     }
 
+    private var usesSidebar: Bool {
+        #if os(macOS)
+        true
+        #else
+        availableSize.width >= 1000 && availableSize.height >= 560 && !dynamicTypeSize.isAccessibilitySize
+        #endif
+    }
+
+    private var compactFeature: Bool {
+        #if os(iOS)
+        usesSidebar
+        #else
+        false
+        #endif
+    }
+
     var body: some View {
         @Bindable var store = store
-        VStack(spacing: 0) {
-            Group {
-                #if os(macOS)
+        GeometryReader { geometry in
+            VStack(spacing: 0) {
                 HStack(spacing: 0) {
-                    sidebar.frame(width: 210)
-                    Rectangle().fill(Sunset.stroke(scheme)).frame(width: 1)
+                    if usesSidebar {
+                        sidebar.frame(width: 210)
+                        Rectangle().fill(Sunset.stroke(scheme)).frame(width: 1)
+                    }
                     navigationContent
                 }
-                #else
-                navigationContent
-                #endif
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                if let current = store.current {
+                    MiniPlayerView(track: current, openPlayer: { searchFocused = false; showingPlayer = true }, openQueue: { showingQueue = true })
+                }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            if let current = store.current {
-                MiniPlayerView(track: current, openPlayer: { searchFocused = false; showingPlayer = true }, openQueue: { showingQueue = true })
+            .onChange(of: geometry.size, initial: true) { _, size in
+                availableSize = size
             }
         }
         .tint(Sunset.accent(scheme))
@@ -126,7 +144,7 @@ struct ContentView: View {
                 workspaceBar
                 searchField
                 #if os(iOS)
-                sectionPicker
+                if !usesSidebar { sectionPicker }
                 #endif
                 if store.isImporting { importProgress }
                 if let notice = store.playlistNotice { noticeBanner(notice) }
@@ -143,7 +161,7 @@ struct ContentView: View {
                         }
                         .id("libraryTop")
                         .padding(.horizontal, 24).padding(.top, 22).padding(.bottom, 24)
-                        .frame(maxWidth: 1100, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(maxWidth: 1100, alignment: .leading).frame(maxWidth: .infinity)
                     }
                     .scrollDismissesKeyboard(.interactively)
                     .onChange(of: section) { _, _ in scroll.scrollTo("libraryTop", anchor: .top) }
@@ -170,7 +188,7 @@ struct ContentView: View {
                 StudioMark().foregroundStyle(Sunset.accent(scheme))
                 Text("Zuneyra").font(.system(size: 27, weight: .medium, design: .serif)).tracking(-1)
             }.padding(.horizontal, 16).padding(.top, 23).padding(.bottom, 30)
-            Text("PRIVATE COLLECTION").font(.system(size: 9, weight: .medium)).tracking(1.8).foregroundStyle(Sunset.secondary(scheme))
+            Text(String(localized: "私人收藏")).font(.system(size: 9, weight: .medium)).tracking(1.8).foregroundStyle(Sunset.secondary(scheme))
                 .padding(.horizontal, 22).padding(.bottom, 18)
             VStack(spacing: 4) {
                 ForEach(LibrarySection.allCases) { item in
@@ -181,7 +199,7 @@ struct ContentView: View {
                             Spacer(minLength: 4)
                             Text(sectionCount(item)).font(.system(size: 10, design: .monospaced))
                                 .foregroundStyle(Sunset.secondary(scheme))
-                        }.padding(.horizontal, 12).frame(height: 43)
+                        }.padding(.horizontal, 12).frame(minHeight: 44)
                             .foregroundStyle(section == item ? Sunset.accent(scheme) : .primary)
                             .background(section == item ? Sunset.accent(scheme).opacity(0.09) : .clear, in: RoundedRectangle(cornerRadius: 5))
                             .overlay(alignment: .leading) {
@@ -213,8 +231,12 @@ struct ContentView: View {
     private var workspaceBar: some View {
         HStack(spacing: 6) {
             #if os(iOS)
-            StudioMark().foregroundStyle(Sunset.accent(scheme))
-            Text("Zuneyra").font(.system(.title2, design: .serif, weight: .medium)).tracking(-0.5).lineLimit(1)
+            if usesSidebar {
+                Text(String(localized: "你的私人音乐库")).font(.system(.subheadline, design: .serif)).foregroundStyle(Sunset.secondary(scheme))
+            } else {
+                StudioMark().foregroundStyle(Sunset.accent(scheme))
+                Text("Zuneyra").font(.system(.title2, design: .serif, weight: .medium)).tracking(-0.5).lineLimit(1)
+            }
             #else
             Text(String(localized: "你的私人音乐库")).font(.system(.subheadline, design: .serif)).foregroundStyle(Sunset.secondary(scheme))
             #endif
@@ -235,6 +257,7 @@ struct ContentView: View {
                 .keyboardShortcut("o", modifiers: .command).accessibilityLabel(String(localized: "导入音乐"))
             #endif
         }.font(.subheadline).padding(.horizontal, 24).padding(.vertical, 10)
+            .frame(maxWidth: 1100).frame(maxWidth: .infinity)
             .background(Sunset.background(scheme))
     }
 
@@ -309,8 +332,8 @@ struct ContentView: View {
         #endif
         .background(Sunset.panel(scheme).opacity(0.6), in: RoundedRectangle(cornerRadius: 10))
         .overlay { RoundedRectangle(cornerRadius: 10).strokeBorder(searchFocused ? Sunset.accent(scheme) : .clear, lineWidth: 1) }
-        .padding(.horizontal, 24).padding(.top, 16).padding(.bottom, 8)
-        .frame(maxWidth: 1100).frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 24).padding(.top, compactFeature ? 4 : 16).padding(.bottom, 8)
+        .frame(maxWidth: 1100).frame(maxWidth: .infinity)
     }
 
     private var sectionPicker: some View {
@@ -318,7 +341,7 @@ struct ContentView: View {
             HStack(spacing: 22) {
                 ForEach(LibrarySection.allCases) { item in
                     Button { switchSection(item) } label: {
-                        Text(item == .favorites ? String(localized: "收藏") : item.title)
+                        Text(item == .favorites ? String(localized: "收藏分类", defaultValue: "收藏", comment: "Compact navigation tab for the favorites collection, not the Favorite action") : item.title)
                             .font(.subheadline.weight(section == item ? .semibold : .medium))
                             .fixedSize().frame(minHeight: 44)
                             .foregroundStyle(section == item ? Sunset.accent(scheme) : Sunset.secondary(scheme))
@@ -512,7 +535,7 @@ struct ContentView: View {
                             if !store.isPlaying { store.resume() }
                             showingPlayer = true
                         } else { playAll(featuredAlbum) }
-                    }, browse: { openAlbum(first.albumKey) })
+                    }, browse: { openAlbum(first.albumKey) }, compact: compactFeature)
             }
             albumGrid
         } else if section == .artists && selectedAlbum == nil && searchTerm.isEmpty && !selecting {
