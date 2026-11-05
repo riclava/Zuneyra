@@ -397,6 +397,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]" = Configuration/CarPlay.entitlements;
 				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = Configuration/CarPlay.entitlements;
 				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = Configuration/Mac.entitlements;
 				CODE_SIGN_STYLE = Automatic;
@@ -437,6 +438,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]" = Configuration/CarPlay.entitlements;
 				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = Configuration/CarPlay.entitlements;
 				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = Configuration/Mac.entitlements;
 				CODE_SIGN_STYLE = Automatic;
