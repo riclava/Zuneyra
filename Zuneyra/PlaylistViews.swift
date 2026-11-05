@@ -78,7 +78,7 @@ struct PlaylistLibraryView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }.frame(maxWidth: .infinity, alignment: .leading)
                 Button { creating = true } label: { Label(String(localized: "新建歌单"), systemImage: "plus") }
-                    .buttonStyle(StudioButtonStyle(prominent: true))
+                    .buttonStyle(StudioButtonStyle(prominent: true)).protectLibraryAction()
                     .disabled(store.isBusy)
             }
             Rectangle().fill(Sunset.stroke(scheme)).frame(height: 1)
@@ -93,7 +93,7 @@ struct PlaylistLibraryView: View {
                         NavigationLink(value: playlist.id) {
                             playlistCard(playlist, tracks: tracks)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.plain).protectLibraryAction()
                         .accessibilityLabel(String(localized: "歌单 \(playlist.name)，\(tracks.count) 首，\(playlistDuration(tracks))"))
                     }
                 }

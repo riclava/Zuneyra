@@ -44,10 +44,10 @@ CarPlay 与手机共用 PlayerStore，连接不自动播放，断开暂停并保
 
 Mac 侧栏宽 210 点，窗口最小 800×580。iOS 按当前窗口可用宽度适配：宽度至少 820 点、高度至少 560 点且非辅助功能字号时显示 210 点侧栏，否则使用顶部分类；切换宽度不重建导航栈。工具栏、搜索框及音乐库内容共用居中的 1100 点最大宽度，iPad 侧栏模式使用更紧凑的推荐卡片。iOS 主要操作目标至少 44 点。歌曲、艺术家和收藏页将批量选择放在列表「…」菜单。支持语义字号、长标题换行、辅助功能状态与减少动态效果；队列和管理空态填满可用空间。进度条辅助功能操作每次前后 10 秒。
 
-图标唯一原稿为[单音符图标](assets/zuneyra-icon-single-v4.png)，由 image_gen 生成并经用户选定：莓红／珊瑚底色、暖白单音符。重新导出（仓库根目录执行）：
+当前图标原稿为[曲线 Z 图标](assets/zuneyra-icon-z-curve.png)，由 image_gen 生成并经用户选定：莓红／珊瑚渐变底色、奶油白曲线 Z。重新导出（仓库根目录执行）：
 
 ```sh
-swift scripts/generate-app-icons.swift docs/assets/zuneyra-icon-single-v4.png Zuneyra/Assets.xcassets/AppIcon.appiconset
+swift scripts/generate-app-icons.swift docs/assets/zuneyra-icon-z-curve.png Zuneyra/Assets.xcassets/AppIcon.appiconset
 ```
 
 iOS 导出不透明满幅 1024 图；Mac 导出含透明边距和圆角的 1x／2x 资源。勿把预览截图当作图标源文件。
@@ -100,4 +100,4 @@ Duo 专项验收仍需官方支持环境／真机：播放中折叠与展开、�
 
 2026-11-05 Duo 模拟器实测：Xcode 27.2，iOS 27.2（24B91016s）。按系统安全区后的可用宽度将侧栏与播放器队列门槛调整为 820×560 点；横向播放器需宽大于高，展开竖屏使用纵向布局。修正封面在横向布局中尺寸塌缩，精简 iOS 最近聆听卡片，并将嵌入队列菜单移至标题旁。检查折叠横竖屏、半展开、展开横竖屏，中英文布局；观察到折叠展开时歌曲与进度保持。85 项测试通过（`/tmp/zuneyra-duo27-layout-test.log`），最后的卡片与队列外观调整通过 iOS 与 macOS 构建。未完成 VoiceOver 全流程、分屏及所有表单专项验收。Duo 中英文各 4 张原生 JPEG 截图已保存，恢复 Apple 登录后，已上传至 iOS 1.0 草稿的中英文 iPhone Duo 栏位，各确认 4/10，尚未提交审核。
 
-音乐库滚动操作保护：`ScrollActionGuard` 在拖动后暂时禁用内容控件，保留命中测试以避免穿透。iOS 18／macOS 15 及以上同时观察惯性滚动阶段，停止后延迟 150 ms 恢复点击；较早系统以拖动结束后的短暂保护兜底。分页回弹期间单独拦截点击，未选中页面仍不可操作。此保护不改变播放器底部独立控制。
+音乐库滚动操作保护：`ScrollActionGuard` 在拖动后通过专用环境值抑制点击，仅在 Button、Menu、NavigationLink 上应用 `protectLibraryAction()`，以透明命中区域拦截点击，不改变控件颜色或透明度；不对 ScrollView 或页面容器设置 disabled，避免纵向滚动被一并禁用。保留命中测试以避免穿透。iOS 18／macOS 15 及以上同时观察惯性滚动阶段，停止后延迟 150 ms 恢复点击；较早系统以拖动结束后的短暂保护兜底。分页回弹期间单独拦截点击，未选中页面仍不可操作。此保护不改变播放器底部独立控制。

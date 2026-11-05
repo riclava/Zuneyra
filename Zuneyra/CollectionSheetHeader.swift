@@ -134,8 +134,8 @@ private struct ScrollActionGuard: ViewModifier {
 
     func body(content: Content) -> some View {
         observeScrolling(content)
-            // Disable controls, not hit testing: touches must not pass through to views behind this page.
-            .disabled(suppressActions)
+            // Publish a custom flag; never disable the ScrollView itself.
+            .transformEnvironment(\.libraryActionsSuppressed) { $0 = $0 || suppressActions }
             .simultaneousGesture(
                 DragGesture(minimumDistance: 8)
                     .updating($dragActive) { _, active, _ in active = true }
@@ -198,5 +198,38 @@ private struct ScrollActionGuard: ViewModifier {
             suppressActions = false
             releaseTask = nil
         }
+    }
+}
+
+private struct LibraryActionsSuppressedKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var libraryActionsSuppressed: Bool {
+        get { self[LibraryActionsSuppressedKey.self] }
+        set { self[LibraryActionsSuppressedKey.self] = newValue }
+    }
+}
+
+extension View {
+    /// Apply only to a Button, Menu, or NavigationLink, never a scrolling container.
+    func protectLibraryAction() -> some View { modifier(LibraryActionProtection()) }
+}
+
+private struct LibraryActionProtection: ViewModifier {
+    @Environment(\.libraryActionsSuppressed) private var suppressed
+    func body(content: Content) -> some View {
+        content
+            // Preserve the control's normal colors; suppression is only a touch-routing rule.
+            .allowsHitTesting(!suppressed)
+            .overlay {
+                if suppressed {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture { }
+                        .accessibilityHidden(true)
+                }
+            }
     }
 }

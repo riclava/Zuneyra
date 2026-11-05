@@ -31,7 +31,7 @@ struct CollectionFeatureView: View {
                                 Image(systemName: "play.fill").frame(width: 44, height: 44)
                                     .foregroundStyle(.white)
                                     .background(Sunset.accent(scheme), in: RoundedRectangle(cornerRadius: 8))
-                            }.buttonStyle(.plain).disabled(disabled)
+                            }.buttonStyle(.plain).protectLibraryAction().disabled(disabled)
                                 .accessibilityLabel(isCurrent ? String(localized: "继续聆听") : String(localized: "播放专辑"))
                             browseButton
                         }
@@ -93,12 +93,12 @@ struct CollectionFeatureView: View {
     private var playButton: some View {
         Button(action: play) {
             Label(isCurrent ? (isPlaying ? String(localized: "打开播放器") : String(localized: "继续聆听")) : String(localized: "播放专辑"), systemImage: "play.fill")
-        }.buttonStyle(StudioButtonStyle(prominent: true)).disabled(disabled)
+        }.buttonStyle(StudioButtonStyle(prominent: true)).protectLibraryAction().disabled(disabled)
     }
     private var browseButton: some View {
         Button(action: browse) {
             HStack(spacing: 8) { Text(String(localized: "查看专辑")); Image(systemName: "arrow.up.right").font(.caption) }
                 .font(.subheadline).frame(minHeight: 44)
-        }.buttonStyle(.plain).foregroundStyle(Sunset.secondary(scheme))
+        }.buttonStyle(.plain).protectLibraryAction().foregroundStyle(Sunset.secondary(scheme))
     }
 }

@@ -6,7 +6,8 @@
 | --- | --- |
 | [app-store-screenshots](app-store-screenshots/README.md) | 24 张中英文截图：iPhone、iPad、macOS 各 4 张 / 语言 |
 | [app-store-creatives](app-store-creatives/prompts.md) | 4 张中英文品牌图：Header 3840 × 1646、Search Results 1920 × 1280 |
-| zuneyra-icon-single-v4.png | 已选定的 App 图标源图 |
+| zuneyra-icon-z-curve.png | 已选定的 App 图标源图：曲线 Z |
+| zuneyra-icon-single-v4.png | 历史单音符图标原稿 |
 
 截图和品牌图均已上传 App Store Connect 版本草稿，未提交审核。各目录的 manifest.json 记录正式文件尺寸和 SHA-256。生成提示词保存在 app-store-creatives/prompts.md。
 
