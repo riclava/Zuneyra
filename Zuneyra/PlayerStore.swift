@@ -431,6 +431,17 @@ final class PlayerStore {
         guard queueState.upcoming.indices.contains(target) else { return }
         moveUpcoming(from: IndexSet(integer: index), to: direction > 0 ? target + 1 : target)
     }
+    func importLyrics(from url: URL, trackID: UUID) async throws {
+        let updated = try await repository.importLyrics(from: url, trackID: trackID)
+        if let index = tracks.firstIndex(where: { $0.id == trackID }) { tracks[index] = updated }
+        if current?.id == trackID { current = updated }
+    }
+
+    func cyclePlaybackMode() {
+        guard !isManaging else { return }
+        queueState.cyclePlaybackMode()
+        saveSession(); updateNowPlaying()
+    }
     func toggleShuffle() { setShuffle(!queueState.shuffle) }
     func setShuffle(_ enabled: Bool) {
         guard !isManaging else { return }

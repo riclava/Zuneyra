@@ -5,6 +5,7 @@ import MediaToolbox
 enum ReplayGainMode: String, CaseIterable, Identifiable {
     case off, track, album
     var id: String { rawValue }
+    var shortTitle: String { switch self { case .off: String(localized: "关闭"); case .track: String(localized: "曲目"); case .album: String(localized: "专辑") } }
     var title: String { switch self { case .off: String(localized: "关闭增益"); case .track: String(localized: "曲目增益"); case .album: String(localized: "专辑增益") } }
 }
 

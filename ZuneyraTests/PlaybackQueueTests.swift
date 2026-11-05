@@ -3,6 +3,39 @@ import Testing
 @testable import Zuneyra
 
 struct PlaybackQueueTests {
+    @Test func unifiedModesPreserveCurrentAndPendingEntries() throws {
+        var queue = PlaybackQueue(seed: 42)
+        queue.replace(trackIDs: (0..<8).map { _ in UUID() }, selectedIndex: 2)
+        let current = queue.currentEntry
+        let past = queue.past
+        let pending = queue.upcoming
+        for expected in [PlaybackMode.repeatAll, .repeatOne, .shuffle, .sequential] {
+            queue.cyclePlaybackMode()
+            #expect(queue.playbackMode == expected)
+            #expect(queue.currentEntry == current)
+            #expect(queue.past == past)
+            #expect(Set(queue.upcoming) == Set(pending))
+            #expect(queue.shuffle == (expected == .shuffle))
+            #expect(queue.repeatMode == (expected == .repeatAll ? .all : expected == .repeatOne ? .one : .off))
+            let restored = try JSONDecoder().decode(PlaybackQueue.self, from: JSONEncoder().encode(queue))
+            #expect(restored == queue)
+        }
+        #expect(queue.upcoming == pending)
+    }
+
+    @Test func unifiedModeClearsLegacyCombinedModesWithoutStartingPlayback() {
+        var queue = PlaybackQueue(seed: 1)
+        queue.append(trackIDs: [UUID(), UUID()])
+        queue.setShuffle(true)
+        queue.setRepeat(.one)
+        queue.cyclePlaybackMode()
+        #expect(queue.playbackMode == .sequential)
+        #expect(!queue.shuffle)
+        #expect(queue.repeatMode == .off)
+        #expect(queue.currentEntry == nil)
+        #expect(queue.upcoming.count == 2)
+    }
+
     @Test func occurrencesAreIndependentAndInsertionsDoNotAutoplay() throws {
         let a = UUID(), b = UUID(), c = UUID()
         var queue = PlaybackQueue(seed: 1)

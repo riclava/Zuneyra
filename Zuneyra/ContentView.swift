@@ -6,10 +6,15 @@ struct ContentView: View {
     @Environment(\.colorScheme) private var scheme
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @State private var visibleLibraryItem: String?
+    @State private var visibleLibraryItems: [LibrarySection: String] = [:]
     @State private var availableSize: CGSize = .zero
     @State private var section: LibrarySection = .albums
-    @State private var navigationGeneration = 0
+    // Rendering context for neighboring pages; interaction still belongs to the selected page.
+    private var previewSection: LibrarySection?
+    private var preparedTracks: [Track]?
+    private var preparedAlbums: [[Track]]?
+    private var renderedSection: LibrarySection { previewSection ?? section }
+    private var renderedQuery: String { previewSection == nil ? query : "" }
     @State private var query = ""
     @State private var songSort: LibrarySongSort = .recent
     @FocusState private var searchFocused: Bool
@@ -30,26 +35,64 @@ struct ContentView: View {
     @State private var confirmDelete = false
     @State private var deletionBytes: Int64 = 0
 
+    enum LibraryDragAxis {
+        case horizontal, vertical
+
+        static func resolve(locked: Self?, horizontal: CGFloat, vertical: CGFloat, canPage: Bool) -> Self {
+            if let locked { return locked }
+            return canPage && abs(horizontal) > abs(vertical) * 2 ? .horizontal : .vertical
+        }
+    }
+
     enum LibrarySection: String, CaseIterable, Identifiable {
         case albums = "专辑", songs = "歌曲", artists = "艺术家", favorites = "我的收藏", playlists = "歌单"
         var id: String { rawValue }
+
+        /// Reserve both edges for history navigation; only deliberate horizontal swipes page categories.
+        func destinationForSwipe(horizontal: CGFloat, vertical: CGFloat, startX: CGFloat, width: CGFloat) -> Self? {
+            guard width > 48, startX > 24, startX < width - 24,
+                  abs(horizontal) >= 64, abs(horizontal) > abs(vertical) * 2,
+                  let index = Self.allCases.firstIndex(of: self) else { return nil }
+            let next = index + (horizontal < 0 ? 1 : -1)
+            return Self.allCases.indices.contains(next) ? Self.allCases[next] : nil
+        }
+        func destinationForRelease(horizontal: CGFloat, projected: CGFloat, startX: CGFloat, width: CGFloat) -> Self? {
+            // Allow a deliberate short flick, but ignore tiny taps or a projection in the opposite direction.
+            let sameDirection = horizontal * projected > 0
+            let travel = abs(horizontal) >= 20 && sameDirection && abs(projected) > abs(horizontal) ? projected : horizontal
+            return destinationForSwipe(horizontal: travel, vertical: 0, startX: startX, width: width)
+        }
+        func offsetForSwipe(horizontal: CGFloat, vertical: CGFloat, startX: CGFloat, width: CGFloat) -> CGFloat {
+            guard width > 48, startX > 24, startX < width - 24,
+                  abs(horizontal) > abs(vertical) * 2 else { return 0 }
+            let hasNeighbor = destinationForSwipe(horizontal: horizontal < 0 ? -64 : 64,
+                                                  vertical: 0, startX: startX, width: width) != nil
+            let distance = min(abs(horizontal), width)
+            // A little resistance communicates the boundary without wrapping categories.
+            return (horizontal < 0 ? -1 : 1) * (hasNeighbor ? distance : min(28, distance * 0.15))
+        }
+        func distance(from other: Self) -> Int {
+            (Self.allCases.firstIndex(of: self) ?? 0) - (Self.allCases.firstIndex(of: other) ?? 0)
+        }
         var title: String { NSLocalizedString(rawValue, comment: "Library category") }
         var icon: String { switch self { case .albums: "opticaldisc"; case .songs: "music.note"; case .artists: "person.2"; case .favorites: "heart"; case .playlists: "music.note.list" } }
     }
-    private var searchTerm: String { query.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var searchTerm: String { renderedQuery.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var albumContents: [Track] {
         LibraryPresentation.albumTracks(store.tracks.filter { $0.albumKey == selectedAlbum })
     }
     private var filtered: [Track] {
+        if let preparedTracks { return preparedTracks }
         let matches = store.tracks.filter { track in
-            (section != .favorites || track.favorite)
+            (renderedSection != .favorites || track.favorite)
                 && (selectedAlbum == nil || track.albumKey == selectedAlbum)
-                && LibraryPresentation.matches(track, query: query)
+                && LibraryPresentation.matches(track, query: renderedQuery)
         }
         return selectedAlbum == nil ? songSort.apply(to: matches) : LibraryPresentation.albumTracks(matches)
     }
     private var albums: [[Track]] {
-        Dictionary(grouping: filtered, by: \.albumKey).values
+        if let preparedAlbums { return preparedAlbums }
+        return Dictionary(grouping: filtered, by: \.albumKey).values
             .map { LibraryPresentation.albumTracks($0) }
             .sorted { $0[0].albumKey.localizedStandardCompare($1[0].albumKey) == .orderedAscending }
     }
@@ -143,6 +186,42 @@ struct ContentView: View {
         #endif
     }
 
+    private var libraryContentWidth: CGFloat { availableSize.width - (usesSidebar ? 211 : 0) }
+    private var canSwipeLibrary: Bool {
+        selectedAlbum == nil && !playlistNavigation.canGoBack && !selecting
+            && !showingPlayer && !showingQueue && !showingManagement && !importing
+            && playlistAddRequest == nil
+    }
+
+    private var pagerSections: [LibrarySection] {
+        guard selectedAlbum == nil, !selecting else { return [section] }
+        return LibrarySection.allCases.filter { abs($0.distance(from: section)) <= 1 }
+    }
+
+    private func pageContents(for item: LibrarySection) -> some View {
+        var renderer = self
+        renderer.previewSection = item == section ? nil : item
+        if item != .playlists {
+            renderer.preparedTracks = renderer.filtered
+            if item == .albums { renderer.preparedAlbums = renderer.albums }
+        }
+        return renderer.libraryPageContents
+    }
+
+    private var libraryPageContents: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            if renderedSection == .playlists {
+                PlaylistLibraryView(query: searchTerm)
+            } else {
+                libraryHeader
+                libraryContent
+            }
+        }
+        .id("libraryTop")
+        .padding(.horizontal, 24).padding(.top, 22).padding(.bottom, 24)
+        .frame(maxWidth: 1100, alignment: .leading).frame(maxWidth: .infinity)
+    }
+
     private var navigationContent: some View {
         NavigationStack(path: Binding(get: { playlistNavigation.path }, set: { playlistNavigation.setPath($0) })) {
             VStack(spacing: 0) {
@@ -154,24 +233,22 @@ struct ContentView: View {
                 if store.isImporting { importProgress }
                 if let notice = store.playlistNotice { noticeBanner(notice) }
                 if selecting { selectionBar }
-                ScrollViewReader { scroll in
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 24) {
-                            if section == .playlists {
-                                PlaylistLibraryView(query: searchTerm)
-                            } else {
-                                libraryHeader
-                                libraryContent
+                LibraryCategoryPager(
+                    selection: section, items: pagerSections, width: libraryContentWidth,
+                    enabled: canSwipeLibrary, select: switchSection
+                ) { item in
+                    ScrollViewReader { scroll in
+                        ScrollView { pageContents(for: item) }
+                            .scrollPosition(id: Binding(
+                                get: { visibleLibraryItems[item] },
+                                set: { visibleLibraryItems[item] = $0 }
+                            ), anchor: .top)
+                            .scrollDismissesKeyboard(.interactively)
+                            .onChange(of: selectedAlbum) { _, _ in
+                                if item == section { scroll.scrollTo("libraryTop", anchor: .top) }
                             }
-                        }
-                        .id("libraryTop")
-                        .padding(.horizontal, 24).padding(.top, 22).padding(.bottom, 24)
-                        .frame(maxWidth: 1100, alignment: .leading).frame(maxWidth: .infinity)
                     }
-                    .scrollPosition(id: $visibleLibraryItem, anchor: .top)
-                    .scrollDismissesKeyboard(.interactively)
-                    .onChange(of: section) { _, _ in scroll.scrollTo("libraryTop", anchor: .top) }
-                    .onChange(of: selectedAlbum) { _, _ in scroll.scrollTo("libraryTop", anchor: .top) }
+                    .background(Sunset.background(scheme))
                 }
             }
             .background(Sunset.background(scheme))
@@ -185,7 +262,6 @@ struct ContentView: View {
             back: selectedAlbum != nil || playlistNavigation.canGoBack ? { navigateBack() } : nil,
             forward: canNavigateForward ? { navigateForward() } : nil
         )
-        .id(navigationGeneration)
     }
 
     private var sidebar: some View {
@@ -303,7 +379,6 @@ struct ContentView: View {
     }
 
     private func switchSection(_ item: LibrarySection) {
-        navigationGeneration += 1
         playlistNavigation = PageNavigation()
         forwardAlbum = nil
         albumBackQuery = ""
@@ -343,23 +418,30 @@ struct ContentView: View {
     }
 
     private var sectionPicker: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 22) {
-                ForEach(LibrarySection.allCases) { item in
-                    Button { switchSection(item) } label: {
-                        Text(item == .favorites ? String(localized: "收藏分类", defaultValue: "收藏", comment: "Compact navigation tab for the favorites collection, not the Favorite action") : item.title)
-                            .font(.subheadline.weight(section == item ? .semibold : .medium))
-                            .fixedSize().frame(minHeight: 44)
-                            .foregroundStyle(section == item ? Sunset.accent(scheme) : Sunset.secondary(scheme))
-                            .overlay(alignment: .bottom) {
-                                if section == item { Rectangle().fill(Sunset.accent(scheme)).frame(height: 2) }
-                            }
+        ScrollViewReader { scroll in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 22) {
+                    ForEach(LibrarySection.allCases) { item in
+                        Button { switchSection(item) } label: {
+                            Text(item == .favorites ? String(localized: "收藏分类", defaultValue: "收藏", comment: "Compact navigation tab for the favorites collection, not the Favorite action") : item.title)
+                                .font(.subheadline.weight(section == item ? .semibold : .medium))
+                                .fixedSize().frame(minHeight: 44)
+                                .foregroundStyle(section == item ? Sunset.accent(scheme) : Sunset.secondary(scheme))
+                                .overlay(alignment: .bottom) {
+                                    if section == item { Rectangle().fill(Sunset.accent(scheme)).frame(height: 2) }
+                                }
+                        }
+                        .id(item)
+                        .buttonStyle(.plain).accessibilityLabel(item.title)
+                        .accessibilityAddTraits(section == item ? .isSelected : [])
                     }
-                    .buttonStyle(.plain).accessibilityLabel(item.title)
-                    .accessibilityAddTraits(section == item ? .isSelected : [])
-                }
-            }.padding(.horizontal, 24)
-        }.overlay(alignment: .bottom) { Rectangle().fill(Sunset.stroke(scheme)).frame(height: 1) }
+                }.padding(.horizontal, 24)
+            }
+            .onChange(of: section, initial: true) { _, item in
+                scroll.scrollTo(item, anchor: .center)
+            }
+            .overlay(alignment: .bottom) { Rectangle().fill(Sunset.stroke(scheme)).frame(height: 1) }
+        }
     }
 
     private var importProgress: some View {
@@ -442,7 +524,7 @@ struct ContentView: View {
                     }
                     #if os(macOS)
                     if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 8) }
-                    if section != .albums && !store.tracks.isEmpty && !selecting { selectionButton }
+                    if renderedSection != .albums && !store.tracks.isEmpty && !selecting { selectionButton }
                     #endif
                 }
             }
@@ -480,7 +562,7 @@ struct ContentView: View {
         .help(favorite ? String(localized: "取消收藏专辑") : String(localized: "收藏专辑"))
     }
     private var collectionTitle: String {
-        switch section {
+        switch renderedSection {
         case .albums: return String(localized: "唱片收藏")
         case .songs: return String(localized: "所有歌曲")
         case .artists: return String(localized: "艺术家")
@@ -499,7 +581,7 @@ struct ContentView: View {
     }
     private var librarySummary: String {
         if !searchTerm.isEmpty { return String(localized: "找到 \(filtered.count) 首歌曲") }
-        switch section {
+        switch renderedSection {
         case .albums: return String(localized: "\(albums.count) 张专辑 · \(filtered.count) 首歌曲")
         case .artists: return String(localized: "\(Set(filtered.map(\.artist)).count) 位艺术家 · \(filtered.count) 首歌曲")
         case .favorites: return String(localized: "\(filtered.count) 首喜欢的音乐")
@@ -531,7 +613,7 @@ struct ContentView: View {
                     Button(String(localized: "浏览歌曲")) { switchSection(.songs) }.buttonStyle(StudioButtonStyle())
                 }
             }.padding(.vertical, 24).frame(maxWidth: .infinity)
-        } else if section == .albums && selectedAlbum == nil && searchTerm.isEmpty && !selecting {
+        } else if renderedSection == .albums && selectedAlbum == nil && searchTerm.isEmpty && !selecting {
             if let first = featuredAlbum.first {
                 CollectionFeatureView(track: first, repository: store.repository,
                     summary: String(localized: "\(featuredAlbum.count) 首歌曲 · \(playlistDuration(featuredAlbum))"),
@@ -544,7 +626,7 @@ struct ContentView: View {
                     }, browse: { openAlbum(first.albumKey) }, compact: compactFeature)
             }
             albumGrid
-        } else if section == .artists && selectedAlbum == nil && searchTerm.isEmpty && !selecting {
+        } else if renderedSection == .artists && selectedAlbum == nil && searchTerm.isEmpty && !selecting {
             #if os(iOS)
             HStack(spacing: 14) {
                 Text(String(localized: "全部艺术家")).font(.system(.title3, design: .serif, weight: .medium))
@@ -631,7 +713,7 @@ struct ContentView: View {
     }
     @ViewBuilder private var listActions: some View {
         #if os(iOS)
-        if section == .songs || section == .artists || section == .favorites {
+        if renderedSection == .songs || renderedSection == .artists || renderedSection == .favorites {
             listActionsMenu()
         } else {
             sortMenu
@@ -857,5 +939,119 @@ private struct AlbumActionButtonStyle: ButtonStyle {
             .background(prominent ? Sunset.brand : Sunset.panel(scheme), in: Circle())
             .contentShape(Circle())
             .opacity(enabled ? (configuration.isPressed ? 0.65 : 1) : 0.4)
+    }
+}
+
+/// Gesture updates invalidate only this lightweight container, not the library's filtering/grouping.
+/// Page values are built by the parent once per data/navigation update and reused during a drag.
+private struct LibraryCategoryPager<Page: View>: View {
+    typealias Section = ContentView.LibrarySection
+    typealias DragAxis = ContentView.LibraryDragAxis
+    let selection: Section
+    let items: [Section]
+    let width: CGFloat
+    let enabled: Bool
+    let select: (Section) -> Void
+    private let pages: [Page]
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @GestureState private var gestureActive = false
+    @State private var axis: DragAxis?
+    @State private var offset: CGFloat = 0
+    @State private var settling = false
+    @State private var settlement = UUID()
+
+    init(selection: Section, items: [Section], width: CGFloat, enabled: Bool,
+         select: @escaping (Section) -> Void, @ViewBuilder content: (Section) -> Page) {
+        self.selection = selection
+        self.items = items
+        self.width = width
+        self.enabled = enabled
+        self.select = select
+        pages = items.map(content)
+    }
+
+    var body: some View {
+        ZStack {
+            ForEach(Array(items.enumerated()), id: \.element) { index, item in
+                pages[index]
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .scrollDisabled(item != selection || axis == .horizontal || settling)
+                    .offset(x: CGFloat(item.distance(from: selection)) * width + (reduceMotion ? 0 : offset))
+                    .allowsHitTesting(item == selection && !settling)
+                    .accessibilityHidden(item != selection)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipped()
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.20), value: selection)
+        .coordinateSpace(name: "libraryPaging")
+        #if os(iOS)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 8, coordinateSpace: .named("libraryPaging"))
+                .updating($gestureActive) { _, active, _ in active = true }
+                .onChanged { value in
+                    guard enabled, !settling else { return }
+                    let insideEdges = value.startLocation.x > 24 && value.startLocation.x < width - 24
+                    if axis == nil {
+                        axis = DragAxis.resolve(locked: nil, horizontal: value.translation.width,
+                                                vertical: value.translation.height, canPage: insideEdges)
+                    }
+                    guard axis == .horizontal else { return }
+                    var transaction = Transaction()
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) {
+                        offset = selection.offsetForSwipe(horizontal: value.translation.width, vertical: 0,
+                                                          startX: value.startLocation.x, width: width)
+                    }
+                }
+                .onEnded { value in
+                    guard enabled, !settling, axis == .horizontal else { reset(); return }
+                    let next = selection.destinationForRelease(horizontal: value.translation.width,
+                                                              projected: value.predictedEndTranslation.width,
+                                                              startX: value.startLocation.x, width: width)
+                    finish(at: next)
+                }
+        )
+        .onChange(of: gestureActive) { _, active in
+            if !active && !settling { finish(at: nil) }
+        }
+        #endif
+        .onChange(of: selection) { _, _ in reset() }
+        .onChange(of: width) { _, _ in reset() }
+        .onChange(of: enabled) { _, enabled in if !enabled { reset() } }
+    }
+
+    private func finish(at next: Section?) {
+        guard axis == .horizontal else { reset(); return }
+        let origin = selection
+        let token = UUID()
+        settlement = token
+        settling = true
+        let target = next.map { -CGFloat($0.distance(from: origin)) * width } ?? 0
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18), completionCriteria: .logicallyComplete) {
+            offset = target
+        } completion: {
+            guard settlement == token, selection == origin else { return }
+            // Rebase once after the pages reach their destination; do not animate a second reset.
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                if let next { select(next) }
+                offset = 0
+                axis = nil
+                settling = false
+            }
+        }
+    }
+
+    private func reset() {
+        settlement = UUID()
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            offset = 0
+            axis = nil
+            settling = false
+        }
     }
 }

@@ -1,6 +1,166 @@
 {
   "sourceLanguage" : "zh-Hans",
   "strings" : {
+    "文件格式" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "File Format"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文件格式"
+          }
+        }
+      }
+    },
+    "歌曲信息" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Track Info"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "歌曲信息"
+          }
+        }
+      }
+    },
+    "选择歌词" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Select Lyric Line"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择歌词"
+          }
+        }
+      }
+    },
+    "返回封面" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Back to Artwork"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "返回封面"
+          }
+        }
+      }
+    },
+    "点击封面切换到歌词模式" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tap the artwork to show lyrics"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "点击封面切换到歌词模式"
+          }
+        }
+      }
+    },
+    "显示歌词" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show Lyrics"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示歌词"
+          }
+        }
+      }
+    },
+    "歌词设置" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lyrics Settings"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "歌词设置"
+          }
+        }
+      }
+    },
+    "回到当前句" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Back to Current Line"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "回到当前句"
+          }
+        }
+      }
+    },
+    "从这里播放 %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Play from %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "从这里播放 %@"
+          }
+        }
+      }
+    },
+    "选择后可跳转到这一句" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Select this line to seek to it"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择后可跳转到这一句"
+          }
+        }
+      }
+    },
     " · 已停止" : {
       "localizations" : {
         "en" : {
@@ -13,6 +173,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : " · 已停止"
+          }
+        }
+      }
+    },
+    "%@ · %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ · %2$@"
           }
         }
       }
@@ -919,6 +1089,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "依次切换不循环、列表循环和单曲循环"
+          }
+        }
+      }
+    },
+    "依次切换顺序播放、列表循环、单曲循环和随机播放" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cycle through sequential, repeat all, repeat one, and shuffle"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "依次切换顺序播放、列表循环、单曲循环和随机播放"
           }
         }
       }
@@ -2943,6 +3129,38 @@
         }
       }
     },
+    "播放模式" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Playback Mode"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "播放模式"
+          }
+        }
+      }
+    },
+    "播放设置" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Playback Settings"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "播放设置"
+          }
+        }
+      }
+    },
     "播放进度" : {
       "localizations" : {
         "en" : {
@@ -3616,6 +3834,22 @@
         }
       }
     },
+    "曲目" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Track"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "曲目"
+          }
+        }
+      }
+    },
     "曲目增益" : {
       "localizations" : {
         "en" : {
@@ -3820,6 +4054,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "核对并清理"
+          }
+        }
+      }
+    },
+    "根据音乐文件中的增益信息，减少歌曲之间的音量差异。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Use gain metadata in music files to reduce volume differences between songs."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "根据音乐文件中的增益信息，减少歌曲之间的音量差异。"
           }
         }
       }
@@ -5688,6 +5938,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "音乐库还没有歌曲"
+          }
+        }
+      }
+    },
+    "音量均衡" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Volume Leveling"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音量均衡"
           }
         }
       }

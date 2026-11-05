@@ -46,6 +46,23 @@ import MediaPlayer
         #expect(condition(), "Playback transition did not finish within five seconds")
     }
 
+    @Test func lyricsImportRemainsBoundToOriginalTrackAfterSelectionChanges() async throws {
+        let f = try await Fixture(); defer { f.clean() }
+        f.store.current = f.tracks[0]
+        let targetID = try #require(f.store.current?.id)
+        let url = f.root.appending(path: "selected.lrc")
+        let text = "[00:01.00]Original song lyrics"
+        try text.write(to: url, atomically: true, encoding: .utf8)
+        f.store.current = f.tracks[1]
+        try await f.store.importLyrics(from: url, trackID: targetID)
+        #expect(f.store.current?.id == f.tracks[1].id)
+        #expect(f.store.current?.lyrics == f.tracks[1].lyrics)
+        #expect(f.store.tracks.first(where: { $0.id == targetID })?.lyrics == text)
+        let saved = try await f.repository.load()
+        #expect(saved.first(where: { $0.id == targetID })?.lyrics == text)
+        #expect(saved.first(where: { $0.id == f.tracks[1].id })?.lyrics == f.tracks[1].lyrics)
+    }
+
     @Test func albumFavoriteCompletesPartialFavoritesAndPersists() async throws {
         let f = try await Fixture(); defer { f.clean() }
         f.store.toggleFavorite(f.tracks[0])

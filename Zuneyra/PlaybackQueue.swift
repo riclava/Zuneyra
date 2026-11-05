@@ -13,6 +13,30 @@ enum QueueRepeatMode: String, Codable, CaseIterable, Sendable {
     var next: Self { switch self { case .off: .all; case .all: .one; case .one: .off } }
 }
 
+/// The player presents mutually exclusive modes; legacy shuffle/repeat combinations
+/// are displayed as shuffle and normalized on the next explicit mode change.
+enum PlaybackMode: CaseIterable {
+    case sequential, repeatAll, repeatOne, shuffle
+    var title: String { switch self {
+    case .sequential: String(localized: "顺序播放")
+    case .repeatAll: String(localized: "列表循环")
+    case .repeatOne: String(localized: "单曲循环")
+    case .shuffle: String(localized: "随机播放")
+    } }
+    var symbol: String { switch self {
+    case .sequential: "arrow.right"
+    case .repeatAll: "repeat"
+    case .repeatOne: "repeat.1"
+    case .shuffle: "shuffle"
+    } }
+    var next: Self { switch self {
+    case .sequential: .repeatAll
+    case .repeatAll: .repeatOne
+    case .repeatOne: .shuffle
+    case .shuffle: .sequential
+    } }
+}
+
 /// A cycle contains unique entry IDs even when the underlying tracks repeat.
 /// Past/current/upcoming are separate, so edits never relocate the playing item.
 struct PlaybackQueue: Codable, Equatable, Sendable {
@@ -58,6 +82,19 @@ struct PlaybackQueue: Codable, Equatable, Sendable {
             let pending = Set(upcoming)
             upcoming = canonical.map(\.id).filter { pending.contains($0) }
         }
+    }
+    var playbackMode: PlaybackMode {
+        if shuffle { return .shuffle }
+        switch repeatMode {
+        case .off: return .sequential
+        case .all: return .repeatAll
+        case .one: return .repeatOne
+        }
+    }
+    mutating func cyclePlaybackMode() {
+        let next = playbackMode.next
+        setShuffle(next == .shuffle)
+        setRepeat(next == .repeatAll ? .all : next == .repeatOne ? .one : .off)
     }
     mutating func setRepeat(_ mode: QueueRepeatMode) { repeatMode = mode }
     mutating func insertNext(trackIDs: [UUID]) {
