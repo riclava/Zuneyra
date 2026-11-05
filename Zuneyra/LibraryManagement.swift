@@ -52,8 +52,8 @@ struct CleanupResult: Sendable {
     var skipped = 0
     var failures: [String] = []
     var message: String {
-        var text = "已清理 \(removed) 个文件，移除的文件合计 \(StorageUsage.formatted(bytes))。"
-        if skipped > 0 { text += "保留 \(skipped) 个尚未入库、已更改或无法核对的文件。" }
+        var text = String(localized: "已清理 \(removed) 个文件，移除的文件合计 \(StorageUsage.formatted(bytes))。")
+        if skipped > 0 { text += String(localized: "保留 \(skipped) 个尚未入库、已更改或无法核对的文件。") }
         if !failures.isEmpty { text += "\n" + failures.joined(separator: "\n") }
         return text
     }

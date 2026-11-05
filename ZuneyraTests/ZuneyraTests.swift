@@ -4,6 +4,115 @@ import SQLite3
 @testable import Zuneyra
 
 struct ZuneyraTests {
+    @Test func backupRoundTripPreservesFavoritesLyricsAndPlaylistOrder() async throws {
+        let (root, source) = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let original = MusicRepository(root: root.appending(path: "Original"))
+        _ = try await original.importFiles([source]) { _, _ in }
+        var track = try #require(try await original.load().first)
+        track.favorite = true; track.lyrics = "[00:00.50]测试"; track.discNumber = 2
+        try await original.save(track)
+        _ = try await original.createPlaylist(name: "备份测试", trackIDs: [track.id])
+        let folder = try await original.exportBackup(to: root)
+        let restored = MusicRepository(root: root.appending(path: "Restored"))
+        #expect(try await restored.restoreBackup(from: folder) == 1)
+        let copy = try #require(try await restored.load().first)
+        #expect(copy.favorite && copy.lyrics == track.lyrics && copy.discNumber == 2)
+        #expect(try await restored.loadPlaylists().first?.trackIDs == [copy.id])
+        #expect(try await restored.restoreBackup(from: folder) == 0)
+        #expect(try await restored.load().count == 1)
+    }
+
+    @Test func damagedBackupLeavesExistingLibraryUntouched() async throws {
+        let (root, source) = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let repository = MusicRepository(root: root.appending(path: "Library"))
+        _ = try await repository.importFiles([source]) { _, _ in }
+        let before = try await repository.load()
+        let folder = try await repository.exportBackup(to: root)
+        let track = try #require(before.first)
+        try Data("damaged".utf8).write(to: folder.appending(path: "Media/\(track.filename)"))
+        await #expect(throws: (any Error).self) { try await repository.restoreBackup(from: folder) }
+        #expect(try await repository.load() == before)
+        #expect(try await repository.loadPlaylists().isEmpty)
+    }
+
+    @Test func interruptedImportRemovesOnlyUncommittedTaskFiles() async throws {
+        let (root, source) = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let location = root.appending(path: "Library")
+        let repository = MusicRepository(root: location)
+        _ = try await repository.importFiles([source]) { _, _ in }
+        let committed = try #require(try await repository.load().first)
+        let orphan = UUID(), directory = location.appending(path: "ImportJobs")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let orphanName = "\(orphan).wav"
+        let unrelated = location.appending(path: "Media/untouched.wav")
+        try Data([1]).write(to: unrelated)
+        try Data([2]).write(to: location.appending(path: "Media/\(orphanName)"))
+        for journal in [ImportJournal(trackID: orphan, files: [orphanName]), ImportJournal(trackID: committed.id, files: [committed.filename])] {
+            try JSONEncoder().encode(journal).write(to: directory.appending(path: "\(journal.trackID).json"))
+        }
+        let reopened = MusicRepository(root: location)
+        #expect(try await reopened.load().count == 1)
+        #expect(!FileManager.default.fileExists(atPath: location.appending(path: "Media/\(orphanName)").path))
+        #expect(FileManager.default.fileExists(atPath: unrelated.path))
+        #expect(FileManager.default.fileExists(atPath: await reopened.mediaURL(for: committed).path))
+        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).isEmpty)
+    }
+
+    @Test func portableM3UExportAndImport() async throws {
+        let (root, source) = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let original = MusicRepository(root: root.appending(path: "Original"))
+        _ = try await original.importFiles([source]) { _, _ in }
+        let track = try #require(try await original.load().first)
+        _ = try await original.createPlaylist(name: "测试歌单", trackIDs: [track.id])
+        let folder = try await original.exportPlaylists(to: root)
+        let restored = MusicRepository(root: root.appending(path: "Restored"))
+        #expect(try await restored.importPlaylists(from: folder).added == 1)
+        #expect(try await restored.loadPlaylists().first?.name == "测试歌单")
+        try "#EXTM3U\n../Quiet Test.wav\n".write(to: folder.appending(path: "0.m3u8"), atomically: true, encoding: .utf8)
+        await #expect(throws: (any Error).self) { try await restored.importPlaylists(from: folder) }
+    }
+
+    #if os(macOS)
+    @Test func referencedMusicSurvivesLibraryDeletionAndExportsPortableBackup() async throws {
+        let (root, source) = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let location = root.appending(path: "Library")
+        let repository = MusicRepository(root: location)
+        let report = try await repository.importFiles([source], referencing: true) { _, _ in }
+        #expect(report.added == 1 && report.failures.isEmpty)
+        let track = try #require(try await repository.load().first)
+        #expect(track.sourceBookmark != nil)
+        #expect(!FileManager.default.fileExists(atPath: location.appending(path: "Media/\(track.filename)").path))
+        let reopened = MusicRepository(root: location)
+        #expect(await reopened.mediaURL(for: track).standardizedFileURL == source.standardizedFileURL)
+        let backup = try await repository.exportBackup(to: root)
+        let manifest = try JSONDecoder().decode(LibraryBackup.self, from: Data(contentsOf: backup.appending(path: "manifest.json")))
+        #expect(manifest.tracks.first?.sourceBookmark == nil)
+        _ = try await repository.deleteTracks([track.id])
+        #expect(FileManager.default.fileExists(atPath: source.path))
+        #expect(try await repository.restoreBackup(from: backup) == 1)
+        #expect(try await repository.load().first?.sourceBookmark == nil)
+    }
+    #endif
+
+    @Test func backupRejectsEscapingMediaSymlinkWithoutChangingLibrary() async throws {
+        let (root, source) = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let repository = MusicRepository(root: root.appending(path: "Library"))
+        _ = try await repository.importFiles([source]) { _, _ in }
+        let before = try await repository.load()
+        let backup = try await repository.exportBackup(to: root)
+        let moved = root.appending(path: "Outside")
+        try FileManager.default.moveItem(at: backup.appending(path: "Media"), to: moved)
+        try FileManager.default.createSymbolicLink(at: backup.appending(path: "Media"), withDestinationURL: moved)
+        await #expect(throws: (any Error).self) { try await repository.restoreBackup(from: backup) }
+        #expect(try await repository.load() == before)
+    }
+
     private func fixture() throws -> (URL, URL) {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

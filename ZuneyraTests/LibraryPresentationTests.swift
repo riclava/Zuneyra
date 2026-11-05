@@ -3,6 +3,40 @@ import Testing
 @testable import Zuneyra
 
 struct LibraryPresentationTests {
+    @Test func lyricsHandleOffsetsRepeatedTimesAndPlainText() {
+        let lyrics = Lyrics("[offset:-500]\n[00:01.00][00:03.25]Hello\n[00:02]World")
+        #expect(lyrics.lines.map(\.time) == [0.5, 1.5, 2.75])
+        #expect(lyrics.lines.map(\.text) == ["Hello", "World", "Hello"])
+        #expect(lyrics.activeLine(at: 0.1) == nil)
+        #expect(lyrics.activeLine(at: 1.6) == 1)
+        #expect(Lyrics("普通歌词").lines.isEmpty)
+    }
+
+    @Test func albumSortRespectsDiscBeforeTrackNumber() {
+        var secondDisc = track(1, number: 1)
+        secondDisc.discNumber = 2
+        let firstDisc = track(2, number: 10)
+        #expect(LibraryPresentation.albumTracks([secondDisc, firstDisc]) == [firstDisc, secondDisc])
+    }
+
+    @Test func navigationRestoresPoppedPagesAndClearsForwardOnNewRoute() {
+        var navigation = PageNavigation<Int>()
+        navigation.setPath([1, 2])
+        navigation.setPath([]) // Also handles the system/header back action.
+        #expect(!navigation.canGoBack && navigation.canGoForward)
+        navigation.forward()
+        #expect(navigation.path == [1])
+        navigation.forward()
+        #expect(navigation.path == [1, 2] && !navigation.canGoForward)
+        navigation.back()
+        navigation.setPath([1]) // Repeated binding updates must preserve history.
+        #expect(navigation.canGoForward)
+        navigation.setPath([1, 3])
+        #expect(!navigation.canGoForward)
+        navigation.forward()
+        #expect(navigation.path == [1, 3])
+    }
+
     private func track(
         _ index: Int,
         title: String = "Song",

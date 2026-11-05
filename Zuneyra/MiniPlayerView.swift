@@ -26,14 +26,14 @@ struct MiniPlayerView: View {
                             Text(track.artist).font(.caption).foregroundStyle(Sunset.paper.opacity(0.62)).lineLimit(1)
                         }
                     }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
-                }.buttonStyle(.plain).accessibilityLabel("打开正在播放：\(track.title)")
-                    .accessibilityHint("打开完整播放器与播放队列")
+                }.buttonStyle(.plain).accessibilityLabel(String(localized: "打开正在播放：\(track.title)"))
+                    .accessibilityHint(String(localized: "打开完整播放器与播放队列"))
 
                 HStack(spacing: 8) {
                     #if os(macOS)
                     Button { store.previous() } label: {
                         Image(systemName: "backward.end.fill").frame(width: 40, height: 44)
-                    }.accessibilityLabel("上一首")
+                    }.accessibilityLabel(String(localized: "上一首"))
                     #endif
                     Button { store.toggle() } label: {
                         Image(systemName: store.isPlaying ? "pause.fill" : "play.fill")
@@ -41,18 +41,18 @@ struct MiniPlayerView: View {
                             .frame(width: 46, height: 46)
                             .background(Sunset.brand, in: Circle())
                             .foregroundStyle(Sunset.paper)
-                    }.accessibilityLabel(store.isPlaying ? "暂停" : "播放")
+                    }.accessibilityLabel(store.isPlaying ? String(localized: "暂停") : String(localized: "播放"))
                     if !dynamicTypeSize.isAccessibilitySize {
                         Button { store.next() } label: {
                             Image(systemName: "forward.end.fill").frame(width: 44, height: 44)
-                        }.accessibilityLabel("下一首")
+                        }.accessibilityLabel(String(localized: "下一首"))
                     }
                 }.disabled(store.isManaging)
                 #if os(macOS)
                 PlaybackTimeline(track: track).id(track.id).frame(width: 180).padding(.horizontal, 12)
                 Button { openQueue() } label: {
                     Image(systemName: "list.bullet").frame(width: 44, height: 44)
-                }.accessibilityLabel("播放队列")
+                }.accessibilityLabel(String(localized: "播放队列"))
                 #endif
             }
             .buttonStyle(.plain)

@@ -138,10 +138,11 @@
 				};
 			};
 			buildConfigurationList = 9D07FDB5309AF3C2004C02AA /* Build configuration list for PBXProject "Zuneyra" */;
-			developmentRegion = en;
+			developmentRegion = "zh-Hans";
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
+				"zh-Hans",
 				Base,
 			);
 			mainGroup = 9D07FDB1309AF3C2004C02AA;

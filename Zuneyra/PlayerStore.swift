@@ -27,10 +27,28 @@ final class PlayerStore {
     var errorMessage: String?
     var isLoading = true
     var isManaging = false
+    private(set) var isRescanningMetadata = false
+    private(set) var metadataProgress = ""
+    private var metadataTask: Task<Void, Never>?
     var history: [ImportRecord] = []
     var storage: StorageUsage?
     var managementMessage: String?
-    var isBusy: Bool { isLoading || isImporting || isManaging || isEditingPlaylists }
+    var replayGainMode: ReplayGainMode = .off
+    private var gainTask: Task<Void, Never>?
+    func setReplayGainMode(_ mode: ReplayGainMode) {
+        replayGainMode = mode
+        clearPreload(); refreshPreload()
+        preferences.set(mode.rawValue, forKey: "replayGainMode")
+        guard let item = player.currentItem else { return }
+        let metadata = current?.replayGain
+        gainTask?.cancel()
+        gainTask = Task {
+            do { try await applyReplayGain(to: item, metadata: metadata, mode: mode) }
+            catch is CancellationError { return }
+            catch { errorMessage = error.localizedDescription }
+        }
+    }
+    var isBusy: Bool { isLoading || isImporting || isManaging || isEditingPlaylists || isRescanningMetadata }
     var supportsIncomingFiles: Bool { sharedDocumentsURL != nil }
     private(set) var queueState = PlaybackQueue()
     var queueNotice: String?
@@ -43,7 +61,12 @@ final class PlayerStore {
     private let preferences: UserDefaults
     private let sharedDocumentsURL: URL?
     private let resources = PlaybackResources()
-    private var player: AVPlayer { resources.player }
+    private var player: AVQueuePlayer { resources.player }
+    private var currentItemObservation: NSKeyValueObservation?
+    private var activeItem: AVPlayerItem?
+    private var preloaded: (entry: QueueEntry, item: AVPlayerItem)?
+    private var preloadTask: Task<Void, Never>?
+    private var preloadRevision = 0
     private var itemObservation: NSKeyValueObservation?
     private var rateObservation: NSKeyValueObservation?
     @ObservationIgnored private var artworkTask: Task<Void, Never>?
@@ -61,6 +84,7 @@ final class PlayerStore {
 
     init(repository: MusicRepository = MusicRepository(), preferences: UserDefaults = .standard, sharedDocumentsURL: URL? = SharedDocumentsLocation.defaultURL) {
         self.preferences = preferences
+        self.replayGainMode = ReplayGainMode(rawValue: preferences.string(forKey: "replayGainMode") ?? "off") ?? .off
         self.repository = repository
         self.sharedDocumentsURL = sharedDocumentsURL
         resources.timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.5, preferredTimescale: 600), queue: .main) { [weak self] _ in
@@ -72,7 +96,7 @@ final class PlayerStore {
                 guard seconds.isFinite else { return }
                 self.position = max(0, seconds)
                 let checkpoint = Int(self.position) / 5
-                if checkpoint != self.lastCheckpoint {
+                if self.wantsPlayback && checkpoint != self.lastCheckpoint {
                     self.lastCheckpoint = checkpoint; self.saveSession()
                 }
             }
@@ -87,7 +111,9 @@ final class PlayerStore {
         resources.notifications.append(NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: nil, queue: .main) { [weak self] note in
             let finishedItem = note.object as? AVPlayerItem
             Task { @MainActor [weak self] in
-                guard let self, self.wantsPlayback, let item = finishedItem, item === self.player.currentItem else { return }
+                guard let self, self.wantsPlayback, let item = finishedItem, item === self.activeItem else { return }
+                // AVQueuePlayer performs the handoff; KVO updates our logical queue.
+                if self.preloaded != nil { self.acceptPreloadedItem(); return }
                 self.next(automatically: true)
             }
         })
@@ -113,6 +139,9 @@ final class PlayerStore {
             }
         })
         #endif
+        currentItemObservation = player.observe(\.currentItem, options: [.new]) { [weak self] _, _ in
+            Task { @MainActor [weak self] in self?.acceptPreloadedItem() }
+        }
         configureRemoteCommands()
     }
 
@@ -148,13 +177,13 @@ final class PlayerStore {
     }
 
     func scanSharedDocuments() {
-        guard !isLoading, !isImporting, !isManaging, !isEditingPlaylists, let sharedDocumentsURL else { return }
+        guard !isBusy, let sharedDocumentsURL else { return }
         isImporting = true
-        importProgress = "正在检查电脑传入的音乐…"
+        importProgress = String(localized: "正在检查电脑传入的音乐…")
         importTask = Task {
             do {
                 let report = try await repository.importSharedDocuments(from: sharedDocumentsURL) { [weak self] completed, total in
-                    await MainActor.run { [weak self] in self?.importProgress = "正在导入电脑音乐 \(completed) / \(total)" }
+                    await MainActor.run { [weak self] in self?.importProgress = String(localized: "正在导入电脑音乐 \(completed) / \(total)") }
                 }
                 tracks = try await repository.load()
                 history = try await repository.importHistory()
@@ -168,13 +197,13 @@ final class PlayerStore {
         }
     }
 
-    func importFiles(_ urls: [URL]) {
-        guard !isLoading, !isImporting, !isManaging, !isEditingPlaylists else { return }
-        isImporting = true; importProgress = "正在准备文件…"
+    func importFiles(_ urls: [URL], referencing: Bool = false) {
+        guard !isBusy else { return }
+        isImporting = true; importProgress = String(localized: "正在准备文件…")
         importTask = Task {
             do {
-                let report = try await repository.importFiles(urls) { [weak self] completed, total in
-                    await MainActor.run { [weak self] in self?.importProgress = "正在导入 \(completed) / \(total)" }
+                let report = try await repository.importFiles(urls, referencing: referencing) { [weak self] completed, total in
+                    await MainActor.run { [weak self] in self?.importProgress = String(localized: "正在导入 \(completed) / \(total)") }
                 }
                 tracks = try await repository.load()
                 history = try await repository.importHistory()
@@ -209,7 +238,9 @@ final class PlayerStore {
             tracks.removeAll { ids.contains($0.id) }
             queueState.removeTracks(ids)
             if deletingCurrent {
-                player.replaceCurrentItem(with: nil)
+                clearPreload()
+                activeItem = nil
+                player.removeAllItems()
                 itemObservation = nil
                 current = nil; position = 0
                 MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
@@ -219,7 +250,7 @@ final class PlayerStore {
             }
             saveSession()
             playlists = try await repository.loadPlaylists()
-            managementMessage = "已从音乐库删除 \(result.removed) 首歌曲，清除约 \(StorageUsage.formatted(result.bytes)) 的副本。Finder 或其他原位置文件保留。" + (result.failures.isEmpty ? "" : "\n" + result.failures.joined(separator: "\n"))
+            managementMessage = String(localized: "已从音乐库删除 \(result.removed) 首歌曲，清除约 \(StorageUsage.formatted(result.bytes)) 的副本。Finder 或其他原位置文件保留。") + (result.failures.isEmpty ? "" : "\n" + result.failures.joined(separator: "\n"))
             await refreshManagement()
             return true
         } catch { errorMessage = error.localizedDescription; return false }
@@ -242,10 +273,78 @@ final class PlayerStore {
         defer { isManaging = false }
         do {
             let result = try await repository.clearArtworkCache()
-            managementMessage = result.message + "封面将在浏览时按需重新生成。"
+            managementMessage = result.message + String(localized: "封面将在浏览时按需重新生成。")
             await refreshManagement()
         } catch { errorMessage = error.localizedDescription }
     }
+
+    func transferPlaylists(at url: URL, importing: Bool) async {
+        guard !isBusy else { return }
+        isManaging = true
+        defer { isManaging = false }
+        do {
+            if importing {
+                let report = try await repository.importPlaylists(from: url)
+                tracks = try await repository.load(); playlists = try await repository.loadPlaylists()
+                managementMessage = report.summary + (report.failures.isEmpty ? "" : "\n" + report.failures.joined(separator: "\n"))
+            } else {
+                let result = try await repository.exportPlaylists(to: url)
+                managementMessage = String(localized: "歌单与音频已导出：\(result.lastPathComponent)")
+            }
+            await refreshManagement()
+        } catch {
+            tracks = (try? await repository.load()) ?? tracks
+            playlists = (try? await repository.loadPlaylists()) ?? playlists
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func transferBackup(at url: URL, restoring: Bool) async {
+        guard !isBusy else { return }
+        isManaging = true
+        defer { isManaging = false }
+        do {
+            if restoring {
+                let count = try await repository.restoreBackup(from: url)
+                tracks = try await repository.load()
+                playlists = try await repository.loadPlaylists()
+                managementMessage = String(localized: "恢复完成，新增 \(count) 首歌曲。原有音乐和歌单已保留。")
+            } else {
+                let result = try await repository.exportBackup(to: url)
+                managementMessage = String(localized: "备份已保存：\(result.lastPathComponent)")
+            }
+            await refreshManagement()
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    func rescanMetadata() {
+        guard !isBusy else { return }
+        isRescanningMetadata = true
+        metadataProgress = String(localized: "正在准备扫描…")
+        metadataTask = Task {
+            defer { isRescanningMetadata = false; metadataTask = nil }
+            do {
+                let report = try await repository.rescanMetadata { [weak self] completed, total in
+                    await MainActor.run { [weak self] in
+                        self?.metadataProgress = String(localized: "正在扫描元数据 \(completed) / \(total)")
+                    }
+                }
+                tracks = try await repository.load()
+                if let id = current?.id, let updated = tracks.first(where: { $0.id == id }) {
+                    current = updated
+                    artworkTrackID = nil
+                    setReplayGainMode(replayGainMode)
+                    updateNowPlaying()
+                }
+                let title = report.cancelled ? String(localized: "扫描已取消，已完成的更新已保留。") : String(localized: "元数据扫描完成。")
+                managementMessage = title + "\n" + String(localized: "已检查 \(report.scanned) 首，更新 \(report.updated) 首，跳过 \(report.skipped) 首，失败 \(report.failures.count) 首。")
+                    + (report.failures.isEmpty ? "" : "\n" + report.failures.joined(separator: "\n"))
+                await refreshManagement()
+            } catch { errorMessage = error.localizedDescription }
+        }
+    }
+
+    func cancelMetadataRescan() { metadataTask?.cancel() }
 
     func cancelImport() { importTask?.cancel() }
 
@@ -254,7 +353,7 @@ final class PlayerStore {
         return playlists.first { $0.id == id }?.trackIDs.compactMap { trackIndex[$0] } ?? []
     }
     private func modifyPlaylists<T>(_ change: (MusicRepository) async throws -> T) async throws -> T {
-        guard !isBusy else { throw NSError(domain: "Zuneyra.Playlist", code: 1, userInfo: [NSLocalizedDescriptionKey: "正在处理音乐库，请稍后重试"]) }
+        guard !isBusy else { throw NSError(domain: "Zuneyra.Playlist", code: 1, userInfo: [NSLocalizedDescriptionKey: String(localized: "正在处理音乐库，请稍后重试")]) }
         isEditingPlaylists = true
         defer { isEditingPlaylists = false }
         let result = try await change(repository)
@@ -364,9 +463,64 @@ final class PlayerStore {
         return true
     }
     private func carPlayContentUnavailable() -> Bool {
-        errorMessage = "这些歌曲已从音乐库或歌单中移除，请返回列表重新选择。"
+        errorMessage = String(localized: "这些歌曲已从音乐库或歌单中移除，请返回列表重新选择。")
         return false
     }
+    private func clearPreload() {
+        preloadRevision += 1
+        preloadTask?.cancel(); preloadTask = nil
+        if let preloaded, preloaded.item !== player.currentItem { player.remove(preloaded.item) }
+        preloaded = nil
+    }
+
+    private func refreshPreload() {
+        guard !isPreparing, let activeItem, player.currentItem === activeItem else { return }
+        var preview = queueState
+        guard let next = preview.advance(naturally: true), let track = track(for: next) else {
+            clearPreload(); return
+        }
+        if preloaded?.entry == next { return }
+        clearPreload()
+        let revision = preloadRevision, request = generation
+        preloadTask = Task { [weak self] in
+            guard let self else { return }
+            let url = await repository.mediaURL(for: track)
+            guard !Task.isCancelled, FileManager.default.fileExists(atPath: url.path) else { return }
+            let item = AVPlayerItem(url: url)
+            do { try await applyReplayGain(to: item, metadata: track.replayGain, mode: replayGainMode) }
+            catch { return }
+            guard !Task.isCancelled, revision == preloadRevision, request == generation,
+                  player.currentItem === activeItem, player.canInsert(item, after: activeItem) else { return }
+            preloaded = (next, item)
+            player.insert(item, after: activeItem)
+        }
+    }
+
+    private func acceptPreloadedItem() {
+        guard let next = preloaded, player.currentItem === next.item else { return }
+        var advanced = queueState
+        guard advanced.advance(naturally: true)?.id == next.entry.id else {
+            pause(); clearPreload(); return
+        }
+        preloaded = nil
+        queueState = advanced
+        activeItem = next.item
+        current = track(for: next.entry)
+        position = 0; lastCheckpoint = -1
+        isPreparing = false
+        let request = generation
+        itemObservation = next.item.observe(\.status, options: [.initial, .new]) { [weak self] item, _ in
+            guard item.status == .failed else { return }
+            let message = item.error?.localizedDescription ?? String(localized: "无法播放此音频")
+            Task { @MainActor [weak self] in
+                guard let self, self.generation == request, self.activeItem === item else { return }
+                self.pause(); self.errorMessage = message
+            }
+        }
+        if !wantsPlayback { player.pause() }
+        saveSession(); updateNowPlaying()
+    }
+
     private func beginTransition(autoplay: Bool) -> Int {
         generation += 1
         seekRevision += 1
@@ -375,7 +529,9 @@ final class PlayerStore {
         queueNotice = nil
         itemObservation = nil
         player.pause()
-        player.replaceCurrentItem(with: nil)
+        clearPreload()
+        activeItem = nil
+        player.removeAllItems()
         isPlaying = false
         return generation
     }
@@ -396,25 +552,34 @@ final class PlayerStore {
         guard FileManager.default.fileExists(atPath: url.path) else {
             if reportMissing {
                 isPreparing = false; wantsPlayback = false
-                errorMessage = "找不到「\(track.title)」的本地文件。可以重新连接来源或导入音乐后重试。"
+                errorMessage = String(localized: "找不到「\(track.title)」的本地文件。可以重新连接来源或导入音乐后重试。")
                 saveSession(); updateNowPlaying()
             }
             return false
         }
         let item = AVPlayerItem(url: url)
+        do { try await applyReplayGain(to: item, metadata: track.replayGain, mode: replayGainMode) }
+        catch {
+            guard request == generation else { return false }
+            errorMessage = error.localizedDescription
+            return false
+        }
+        guard request == generation, queueState.currentID == entry.id else { return false }
         itemObservation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
             guard item.status == .failed else { return }
-            let message = item.error?.localizedDescription ?? "无法播放此音频"
+            let message = item.error?.localizedDescription ?? String(localized: "无法播放此音频")
             Task { @MainActor [weak self] in
                 guard let self, request == self.generation else { return }
                 self.isPreparing = false
                 self.pause(); self.errorMessage = message
             }
         }
-        player.replaceCurrentItem(with: item)
+        activeItem = item
+        player.insert(item, after: nil)
         if position > 0 { await player.seek(to: CMTime(seconds: position, preferredTimescale: 600)) }
         guard request == generation, queueState.currentID == entry.id else { return false }
         isPreparing = false
+        lastCheckpoint = Int(position) / 5
         if wantsPlayback { resume() }
         saveSession(); updateNowPlaying()
         return true
@@ -422,7 +587,7 @@ final class PlayerStore {
     private func stopPlayback() {
         generation += 1; seekRevision += 1
         isPreparing = false; isSeeking = false; wantsPlayback = false
-        player.pause(); player.replaceCurrentItem(with: nil)
+        player.pause(); clearPreload(); activeItem = nil; player.removeAllItems()
         itemObservation = nil
         current = nil; position = 0; isPlaying = false
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
@@ -488,7 +653,7 @@ final class PlayerStore {
                 traversals += 1
                 if attempted.insert(entry.id).inserted {
                     if await prepare(entry, request: request, reportMissing: false) {
-                        if attempted.count > 1 { queueNotice = "已跳过 \(attempted.count - 1) 个不可用的本地文件。" }
+                        if attempted.count > 1 { queueNotice = String(localized: "已跳过 \(attempted.count - 1) 个不可用的本地文件。") }
                         return
                     }
                 }
@@ -505,7 +670,7 @@ final class PlayerStore {
                 if automatically { position = current?.duration ?? 0 }
             } else {
                 position = 0
-                errorMessage = "队列中接下来的本地文件均不可用，播放已停止。"
+                errorMessage = String(localized: "队列中接下来的本地文件均不可用，播放已停止。")
             }
             saveSession(); updateNowPlaying()
         }
@@ -544,6 +709,7 @@ final class PlayerStore {
     }
     private struct LegacySession: Codable { let current: UUID; let queue: [UUID]; let position: Double }
     func saveSession() {
+        refreshPreload()
         guard !queueState.canonical.isEmpty || queueState.shuffle || queueState.repeatMode != .off else {
             preferences.removeObject(forKey: "playbackSession")
             return
@@ -633,7 +799,7 @@ enum SharedDocumentsLocation {
 
 // Tokens have a single MainActor owner. Destruction only happens once that owner is released.
 private final class PlaybackResources: @unchecked Sendable {
-    let player = AVPlayer()
+    let player = AVQueuePlayer()
     var timeObserver: Any?
     var notifications: [NSObjectProtocol] = []
     var remoteTargets: [(MPRemoteCommand, Any)] = []

@@ -8,7 +8,7 @@ struct QueueEntry: Identifiable, Codable, Equatable, Sendable {
 
 enum QueueRepeatMode: String, Codable, CaseIterable, Sendable {
     case off, all, one
-    var title: String { switch self { case .off: "关闭循环"; case .all: "列表循环"; case .one: "单曲循环" } }
+    var title: String { switch self { case .off: String(localized: "关闭循环"); case .all: String(localized: "列表循环"); case .one: String(localized: "单曲循环") } }
     var symbol: String { self == .one ? "repeat.1" : "repeat" }
     var next: Self { switch self { case .off: .all; case .all: .one; case .one: .off } }
 }

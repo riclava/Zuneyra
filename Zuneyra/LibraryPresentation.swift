@@ -7,9 +7,9 @@ enum LibrarySongSort: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .recent: "最近添加"
-        case .title: "歌曲名称"
-        case .artist: "艺术家"
+        case .recent: String(localized: "最近添加")
+        case .title: String(localized: "歌曲名称")
+        case .artist: String(localized: "艺术家")
         }
     }
 
@@ -33,6 +33,8 @@ enum LibrarySongSort: String, CaseIterable, Identifiable {
 enum LibraryPresentation {
     static func albumTracks(_ tracks: [Track]) -> [Track] {
         tracks.sorted { lhs, rhs in
+            let lhsDisc = max(1, lhs.discNumber ?? 1), rhsDisc = max(1, rhs.discNumber ?? 1)
+            if lhsDisc != rhsDisc { return lhsDisc < rhsDisc }
             let lhsNumbered = lhs.trackNumber > 0
             let rhsNumbered = rhs.trackNumber > 0
             if lhsNumbered != rhsNumbered { return lhsNumbered }

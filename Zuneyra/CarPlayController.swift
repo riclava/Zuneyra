@@ -23,7 +23,7 @@ import Observation
         }
         nowPlaying.add(self)
         nowPlaying.isUpNextButtonEnabled = true
-        nowPlaying.upNextTitle = "播放队列"
+        nowPlaying.upNextTitle = String(localized: "播放队列")
         nowPlaying.isAlbumArtistButtonEnabled = false
         interface.setRootTemplate(CPTabBarTemplate(templates: roots), animated: false) { [weak self] success, _ in
             Task { @MainActor [weak self] in
@@ -66,7 +66,7 @@ import Observation
         nowPlaying.isUpNextButtonEnabled = !store.queueState.canonical.isEmpty
         if rootReady, let error = store.errorMessage, error != displayedError, interface?.presentedTemplate == nil {
             displayedError = error
-            let alert = CPAlertTemplate(titleVariants: [error], actions: [CPAlertAction(title: "好", style: .default) { [weak self] _ in
+            let alert = CPAlertTemplate(titleVariants: [error], actions: [CPAlertAction(title: String(localized: "好"), style: .default) { [weak self] _ in
                 self?.store.errorMessage = nil
                 self?.interface?.dismissTemplate(animated: true, completion: nil)
             }])
@@ -76,9 +76,9 @@ import Observation
     }
     private func makeList(_ route: CarPlayRoute) -> CPListTemplate {
         let list = CPListTemplate(title: catalog.title(for: route), sections: [])
-        list.emptyViewTitleVariants = ["这里还没有音乐"]
-        list.emptyViewSubtitleVariants = ["请在 iPhone 导入音乐或整理歌单。"]
-        list.trailingNavigationBarButtons = [CPBarButton(title: "正在播放") { [weak self] _ in self?.showNowPlaying() }]
+        list.emptyViewTitleVariants = [String(localized: "这里还没有音乐")]
+        list.emptyViewSubtitleVariants = [String(localized: "请在 iPhone 导入音乐或整理歌单。")]
+        list.trailingNavigationBarButtons = [CPBarButton(title: String(localized: "正在播放")) { [weak self] _ in self?.showNowPlaying() }]
         lists[ObjectIdentifier(list)] = (list, route, 0)
         update(list, route: route, page: 0)
         return list
@@ -88,7 +88,7 @@ import Observation
         let size = max(1, min(80, CPListTemplate.maximumItemCount - 2))
         let page = CarPlayPage.make(rows: model.rows(for: route), index: page, size: size)
         lists[ObjectIdentifier(list)] = (list, route, page.index)
-        list.emptyViewTitleVariants = [store.isLoading ? "正在读取音乐库…" : "这里还没有音乐"]
+        list.emptyViewTitleVariants = [store.isLoading ? String(localized: "正在读取音乐库…") : String(localized: "这里还没有音乐")]
         var items: [CPListItem] = page.rows.map { row in
             let item = CPListItem(text: row.title, detailText: row.detail, image: listImage(row.trackID == nil ? "music.note.list" : "music.note"))
             item.isEnabled = !store.isLoading && !store.isManaging
@@ -103,8 +103,8 @@ import Observation
             }
             return item
         }
-        if let previous = page.previous { items.insert(pageItem("上一页", list: list, route: route, page: previous), at: 0) }
-        if let next = page.next { items.append(pageItem("下一页", list: list, route: route, page: next)) }
+        if let previous = page.previous { items.insert(pageItem(String(localized: "上一页"), list: list, route: route, page: previous), at: 0) }
+        if let next = page.next { items.append(pageItem(String(localized: "下一页"), list: list, route: route, page: next)) }
         list.trailingNavigationBarButtons.first?.isEnabled = store.current != nil || !store.queueState.canonical.isEmpty
         list.updateSections([CPListSection(items: items)])
     }

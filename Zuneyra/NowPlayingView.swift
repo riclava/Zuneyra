@@ -9,10 +9,12 @@ struct NowPlayingView: View {
     @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.dismiss) private var dismiss
 
+    @State private var navigation = PageNavigation<Int>()
+
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: Binding(get: { navigation.path }, set: { navigation.setPath($0) })) {
             VStack(spacing: 0) {
-                CollectionSheetHeader(title: "正在聆听", subtitle: "ZUNEYRA · 私人唱片室", close: { dismiss() })
+                CollectionSheetHeader(title: String(localized: "正在聆听"), subtitle: String(localized: "ZUNEYRA · 私人唱片室"), close: { dismiss() })
                 GeometryReader { geometry in
                     ScrollView {
                         if let track = store.current {
@@ -28,9 +30,17 @@ struct NowPlayingView: View {
                                     PlaybackTimeline(track: track).id(track.id)
                                     transportControls
                                     PlaybackModesView()
+                                    HStack {
+                                        Text("ReplayGain").font(.subheadline).foregroundStyle(.secondary)
+                                        Spacer()
+                                        Picker("ReplayGain", selection: Binding(get: { store.replayGainMode }, set: { store.setReplayGainMode($0) })) {
+                                            ForEach(ReplayGainMode.allCases) { mode in Text(mode.title).tag(mode) }
+                                        }.labelsHidden()
+                                    }
                                 }
                                 VStack(spacing: 4) {
                                     queueLink
+                                    NavigationLink(String(localized: "歌词"), value: 2).frame(minHeight: 44)
                                     Rectangle().fill(Sunset.stroke(scheme)).frame(height: 1)
                                     outputDetails(track)
                                 }
@@ -42,7 +52,7 @@ struct NowPlayingView: View {
                             .frame(maxWidth: 460)
                             .frame(maxWidth: .infinity)
                         } else {
-                            StudioEmptyState(symbol: "play.square", title: "尚未播放", detail: "从音乐库选择一首歌曲，开始聆听。")
+                            StudioEmptyState(symbol: "play.square", title: String(localized: "尚未播放"), detail: String(localized: "从音乐库选择一首歌曲，开始聆听。"))
                                 .frame(maxWidth: .infinity, minHeight: geometry.size.height)
                         }
                     }
@@ -54,7 +64,14 @@ struct NowPlayingView: View {
                     .ignoresSafeArea()
             }
             .collectionSheetChrome()
+            .navigationDestination(for: Int.self) { value in
+                if value == 2 { LyricsView() } else { PlaybackQueueView(showsClose: false) }
+            }
         }
+        .edgeNavigation(
+            back: navigation.canGoBack ? { navigation.back() } : nil,
+            forward: navigation.canGoForward ? { navigation.forward() } : nil
+        )
         .tint(Sunset.accent(scheme))
         #if os(macOS)
         .frame(width: 480)
@@ -65,7 +82,7 @@ struct NowPlayingView: View {
     private func trackDetails(_ track: Track) -> some View {
         HStack(alignment: .top, spacing: 16) {
             VStack(alignment: .leading, spacing: 8) {
-                Label(store.isPlaying ? "正在播放" : "已暂停", systemImage: store.isPlaying ? "waveform" : "pause.circle")
+                Label(store.isPlaying ? String(localized: "正在播放") : String(localized: "已暂停"), systemImage: store.isPlaying ? "waveform" : "pause.circle")
                     .font(.caption.weight(.medium)).foregroundStyle(Sunset.accent(scheme))
                 Text(track.title)
                     .font(.system(.title, design: .serif).weight(.semibold))
@@ -83,8 +100,8 @@ struct NowPlayingView: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(Sunset.accent(scheme))
-            .accessibilityLabel(track.favorite ? "取消收藏 \(track.title)" : "收藏 \(track.title)")
-            .accessibilityValue(track.favorite ? "已收藏" : "未收藏")
+            .accessibilityLabel(track.favorite ? String(localized: "取消收藏 \(track.title)") : String(localized: "收藏 \(track.title)"))
+            .accessibilityValue(track.favorite ? String(localized: "已收藏") : String(localized: "未收藏"))
             .disabled(store.isManaging)
         }
     }
@@ -93,7 +110,7 @@ struct NowPlayingView: View {
         HStack(spacing: 32) {
             Button { store.previous() } label: {
                 Image(systemName: "backward.end.fill").font(.title3).frame(width: 56, height: 56)
-            }.accessibilityLabel("上一首")
+            }.accessibilityLabel(String(localized: "上一首"))
             Button { store.toggle() } label: {
                 Image(systemName: store.isPlaying ? "pause.fill" : "play.fill")
                     .font(.title2.weight(.semibold))
@@ -101,22 +118,22 @@ struct NowPlayingView: View {
                     .background(Sunset.brand, in: Circle())
                     .foregroundStyle(Sunset.paper)
                     .shadow(color: Sunset.brand.opacity(0.20), radius: 12, x: 0, y: 6)
-            }.accessibilityLabel(store.isPlaying ? "暂停" : "播放")
+            }.accessibilityLabel(store.isPlaying ? String(localized: "暂停") : String(localized: "播放"))
             Button { store.next() } label: {
                 Image(systemName: "forward.end.fill").font(.title3).frame(width: 56, height: 56)
-            }.accessibilityLabel("下一首")
+            }.accessibilityLabel(String(localized: "下一首"))
         }
         .buttonStyle(.plain)
         .disabled(store.isManaging)
     }
 
     private var queueLink: some View {
-        NavigationLink { PlaybackQueueView(showsClose: false) } label: {
+        NavigationLink(value: 1) {
             HStack(spacing: 10) {
                 Image(systemName: "music.note.list").font(.subheadline).foregroundStyle(Sunset.accent(scheme))
-                Text("播放队列").font(.subheadline.weight(.medium))
+                Text(String(localized: "播放队列")).font(.subheadline.weight(.medium))
                 Spacer(minLength: 4)
-                Text("\(store.queueState.upcoming.count) 首待播")
+                Text(String(localized: "\(store.queueState.upcoming.count) 首待播"))
                     .font(.caption.monospacedDigit()).foregroundStyle(Sunset.secondary(scheme))
                 Image(systemName: "chevron.right").font(.caption2.weight(.semibold)).foregroundStyle(Sunset.secondary(scheme))
             }
@@ -145,18 +162,18 @@ struct NowPlayingView: View {
         Text(track.filename.components(separatedBy: ".").last?.uppercased() ?? "AUDIO")
             .font(.caption2.weight(.medium)).tracking(1.2)
             .foregroundStyle(Sunset.secondary(scheme))
-            .accessibilityLabel("音频格式 \(track.filename.components(separatedBy: ".").last?.uppercased() ?? "AUDIO")")
+            .accessibilityLabel(String(localized: "音频格式 \(track.filename.components(separatedBy: ".").last?.uppercased() ?? "AUDIO")"))
     }
 
     @ViewBuilder private var audioOutput: some View {
         #if os(iOS)
         HStack(spacing: 4) {
-            Text("音频输出").font(.caption).foregroundStyle(Sunset.secondary(scheme))
+            Text(String(localized: "音频输出")).font(.caption).foregroundStyle(Sunset.secondary(scheme))
                 .accessibilityHidden(true)
             AudioOutputPicker().frame(width: 48, height: 48)
         }
         #else
-        Label("本机播放", systemImage: "speaker.wave.2").font(.caption).foregroundStyle(Sunset.secondary(scheme))
+        Label(String(localized: "本机播放"), systemImage: "speaker.wave.2").font(.caption).foregroundStyle(Sunset.secondary(scheme))
         #endif
     }
 }
@@ -181,9 +198,9 @@ struct PlaybackTimeline: View {
                 }
             }
             .disabled(duration <= 0 || store.isManaging)
-            .accessibilityLabel("播放进度")
-            .accessibilityValue("\(playbackTime(position))，共 \(playbackTime(duration))")
-            .accessibilityHint("每次调整可前进或后退 10 秒")
+            .accessibilityLabel(String(localized: "播放进度"))
+            .accessibilityValue(String(localized: "\(playbackTime(position))，共 \(playbackTime(duration))"))
+            .accessibilityHint(String(localized: "每次调整可前进或后退 10 秒"))
             .accessibilityAdjustableAction { direction in
                 switch direction {
                 case .increment: store.seek(to: min(duration, position + 10))
@@ -195,7 +212,7 @@ struct PlaybackTimeline: View {
             HStack {
                 Text(playbackTime(position))
                 Spacer()
-                Text("−" + playbackTime(duration - position)).accessibilityLabel("剩余 \(playbackTime(duration - position))")
+                Text("−" + playbackTime(duration - position)).accessibilityLabel(String(localized: "剩余 \(playbackTime(duration - position))"))
             }
             .font(.caption2.monospacedDigit())
             .foregroundStyle(Sunset.secondary(scheme))

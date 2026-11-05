@@ -1,6 +1,6 @@
 import Foundation
 
-struct Playlist: Identifiable, Equatable, Sendable {
+struct Playlist: Identifiable, Equatable, Codable, Sendable {
     let id: UUID
     var name: String
     let createdAt: Date

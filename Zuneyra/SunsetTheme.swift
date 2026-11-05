@@ -123,7 +123,7 @@ struct CoverArt: View {
             }.frame(width: proxy.size.width, height: proxy.size.height).clipped()
         }
         .aspectRatio(1, contentMode: .fit).clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-        .accessibilityLabel("\(track.album) 专辑封面")
+        .accessibilityLabel(String(localized: "\(track.album) 专辑封面"))
         .task(id: ArtworkKey(trackID: track.id, artwork: track.artwork)) {
             image = nil
             guard let data = try? await repository.artworkData(for: track), !Task.isCancelled else { return }

@@ -44,7 +44,7 @@ struct CollectionFeatureView: View {
 
     private var heading: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(isCurrent ? "最近聆听" : "从一张专辑开始")
+            Text(isCurrent ? String(localized: "最近聆听") : String(localized: "从一张专辑开始"))
                 .font(.caption.weight(.medium)).foregroundStyle(Sunset.accent(scheme))
             Text(track.album).font(.system(.title2, design: .serif, weight: .medium))
                 .fixedSize(horizontal: false, vertical: true).accessibilityAddTraits(.isHeader)
@@ -69,12 +69,12 @@ struct CollectionFeatureView: View {
     }
     private var playButton: some View {
         Button(action: play) {
-            Label(isCurrent ? (isPlaying ? "打开播放器" : "继续聆听") : "播放专辑", systemImage: "play.fill")
+            Label(isCurrent ? (isPlaying ? String(localized: "打开播放器") : String(localized: "继续聆听")) : String(localized: "播放专辑"), systemImage: "play.fill")
         }.buttonStyle(StudioButtonStyle(prominent: true)).disabled(disabled)
     }
     private var browseButton: some View {
         Button(action: browse) {
-            HStack(spacing: 8) { Text("查看专辑"); Image(systemName: "arrow.up.right").font(.caption) }
+            HStack(spacing: 8) { Text(String(localized: "查看专辑")); Image(systemName: "arrow.up.right").font(.caption) }
                 .font(.subheadline).frame(minHeight: 44)
         }.buttonStyle(.plain).foregroundStyle(Sunset.secondary(scheme))
     }

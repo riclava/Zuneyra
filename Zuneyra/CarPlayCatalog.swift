@@ -43,15 +43,15 @@ struct CarPlayCatalog {
     func rows(for route: CarPlayRoute) -> [CarPlayRow] {
         switch route {
         case .playlists:
-            return playlists.map { .init(id: $0.id.uuidString, title: $0.name, detail: "\($0.trackIDs.count) 首", action: .open(.playlist($0.id))) }
+            return playlists.map { .init(id: $0.id.uuidString, title: $0.name, detail: String(localized: "\($0.trackIDs.count) 首"), action: .open(.playlist($0.id))) }
         case .albums:
             return Dictionary(grouping: tracks, by: \.albumKey).values.compactMap { group in
                 guard let track = group.first else { return nil }
-                return CarPlayRow(id: track.albumKey, title: track.album, detail: "\(track.albumArtist) · \(group.count) 首", action: .open(.album(track.albumKey)), trackID: track.id)
+                return CarPlayRow(id: track.albumKey, title: track.album, detail: String(localized: "\(track.albumArtist) · \(group.count) 首"), action: .open(.album(track.albumKey)), trackID: track.id)
             }.sorted { $0.title == $1.title ? $0.id < $1.id : $0.title.localizedStandardCompare($1.title) == .orderedAscending }
         case .artists:
             return Dictionary(grouping: tracks, by: \.artist).map { name, group in
-                CarPlayRow(id: name, title: name, detail: "\(group.count) 首", action: .open(.artist(name)))
+                CarPlayRow(id: name, title: name, detail: String(localized: "\(group.count) 首"), action: .open(.artist(name)))
             }.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
         case .queue:
             let index = Dictionary(uniqueKeysWithValues: tracks.map { ($0.id, $0) })
@@ -62,22 +62,22 @@ struct CarPlayCatalog {
         default:
             let songs = tracks(for: route)
             guard !songs.isEmpty else { return [] }
-            return [CarPlayRow(id: "play-all", title: "播放全部", detail: "\(songs.count) 首", action: .playAll(route, shuffled: false)),
-                    CarPlayRow(id: "shuffle-all", title: "随机播放", detail: "", action: .playAll(route, shuffled: true))] + songs.map {
+            return [CarPlayRow(id: "play-all", title: String(localized: "播放全部"), detail: String(localized: "\(songs.count) 首"), action: .playAll(route, shuffled: false)),
+                    CarPlayRow(id: "shuffle-all", title: String(localized: "随机播放"), detail: "", action: .playAll(route, shuffled: true))] + songs.map {
                 .init(id: $0.id.uuidString, title: $0.title, detail: $0.artist, action: .play($0.id, route), trackID: $0.id)
             }
         }
     }
     func title(for route: CarPlayRoute) -> String {
         switch route {
-        case .playlists: "歌单"
-        case .favorites: "收藏"
-        case .albums: "专辑"
-        case .artists: "艺术家"
-        case .playlist(let id): playlists.first { $0.id == id }?.name ?? "歌单已移除"
-        case .album(let key): tracks.first { $0.albumKey == key }?.album ?? "专辑已移除"
+        case .playlists: String(localized: "歌单")
+        case .favorites: String(localized: "收藏")
+        case .albums: String(localized: "专辑")
+        case .artists: String(localized: "艺术家")
+        case .playlist(let id): playlists.first { $0.id == id }?.name ?? String(localized: "歌单已移除")
+        case .album(let key): tracks.first { $0.albumKey == key }?.album ?? String(localized: "专辑已移除")
         case .artist(let name): name
-        case .queue: "播放队列"
+        case .queue: String(localized: "播放队列")
         }
     }
     private func songOrder(_ a: Track, _ b: Track) -> Bool {
