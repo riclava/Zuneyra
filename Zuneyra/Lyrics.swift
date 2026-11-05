@@ -37,6 +37,7 @@ struct Lyrics {
 }
 
 struct LyricsView: View {
+    var embedded = false
     @Environment(PlayerStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var scheme
@@ -47,7 +48,7 @@ struct LyricsView: View {
     var body: some View {
         let active = lyrics.activeLine(at: store.position)
         VStack(spacing: 0) {
-            CollectionSheetHeader(title: String(localized: "歌词"), back: { dismiss() })
+            CollectionSheetHeader(title: String(localized: "歌词"), back: embedded ? nil : { dismiss() })
             Button(String(localized: "导入歌词…")) { choosingLyrics = true }
                 .disabled(store.current == nil || store.isBusy).padding(.bottom, 12)
             ScrollViewReader { proxy in

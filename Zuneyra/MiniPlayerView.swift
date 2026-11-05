@@ -5,6 +5,7 @@ struct MiniPlayerView: View {
     @Environment(PlayerStore.self) private var store
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let track: Track
+    var expanded = false
     var openPlayer: () -> Void
     var openQueue: () -> Void
 
@@ -30,11 +31,11 @@ struct MiniPlayerView: View {
                     .accessibilityHint(String(localized: "打开完整播放器与播放队列"))
 
                 HStack(spacing: 8) {
-                    #if os(macOS)
+                    if expanded {
                     Button { store.previous() } label: {
                         Image(systemName: "backward.end.fill").frame(width: 40, height: 44)
                     }.accessibilityLabel(String(localized: "上一首"))
-                    #endif
+                    }
                     Button { store.toggle() } label: {
                         Image(systemName: store.isPlaying ? "pause.fill" : "play.fill")
                             .font(.system(size: 15, weight: .semibold))
@@ -48,12 +49,12 @@ struct MiniPlayerView: View {
                         }.accessibilityLabel(String(localized: "下一首"))
                     }
                 }.disabled(store.isManaging)
-                #if os(macOS)
+                if expanded {
                 PlaybackTimeline(track: track).id(track.id).frame(width: 180).padding(.horizontal, 12)
                 Button { openQueue() } label: {
                     Image(systemName: "list.bullet").frame(width: 44, height: 44)
                 }.accessibilityLabel(String(localized: "播放队列"))
-                #endif
+                }
             }
             .buttonStyle(.plain)
             .padding(.horizontal, 22).padding(.vertical, 14)

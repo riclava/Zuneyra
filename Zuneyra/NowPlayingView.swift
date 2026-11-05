@@ -9,6 +9,7 @@ struct NowPlayingView: View {
     @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.dismiss) private var dismiss
 
+    @State private var companion = 1
     @State private var navigation = PageNavigation<Int>()
 
     var body: some View {
@@ -16,46 +17,38 @@ struct NowPlayingView: View {
             VStack(spacing: 0) {
                 CollectionSheetHeader(title: String(localized: "正在聆听"), subtitle: String(localized: "ZUNEYRA · 私人唱片室"), close: { dismiss() })
                 GeometryReader { geometry in
-                    ScrollView {
-                        if let track = store.current {
-                            VStack(spacing: 24) {
-                                CoverArt(track: track, repository: store.repository, cornerRadius: 12)
-                                    .frame(maxWidth: typeSize.isAccessibilitySize ? 120 : min(320, max(160, geometry.size.height * 0.40)))
-                                    .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.12), lineWidth: 1) }
-                                    .shadow(color: Sunset.ink.opacity(scheme == .dark ? 0.4 : 0.18), radius: 24, x: 0, y: 14)
-                                    .accessibilityHidden(true)
-
-                                trackDetails(track)
-                                VStack(spacing: 12) {
-                                    PlaybackTimeline(track: track).id(track.id)
-                                    transportControls
-                                    PlaybackModesView()
-                                    HStack {
-                                        Text("ReplayGain").font(.subheadline).foregroundStyle(.secondary)
-                                        Spacer()
-                                        Picker("ReplayGain", selection: Binding(get: { store.replayGainMode }, set: { store.setReplayGainMode($0) })) {
-                                            ForEach(ReplayGainMode.allCases) { mode in Text(mode.title).tag(mode) }
-                                        }.labelsHidden()
-                                    }
-                                }
-                                VStack(spacing: 4) {
-                                    queueLink
-                                    NavigationLink(String(localized: "歌词"), value: 2).frame(minHeight: 44)
-                                    Rectangle().fill(Sunset.stroke(scheme)).frame(height: 1)
-                                    outputDetails(track)
-                                }
-                                .padding(.horizontal, 16).padding(.vertical, 8)
-                                .background(Sunset.elevated(scheme).opacity(0.8), in: RoundedRectangle(cornerRadius: 18))
-                                .overlay { RoundedRectangle(cornerRadius: 18).strokeBorder(Sunset.stroke(scheme), lineWidth: 1) }
+                    let layout = AdaptiveLayout(size: geometry.size, accessibility: typeSize.isAccessibilitySize)
+                    HStack(spacing: 0) {
+                        ScrollView {
+                            if let track = store.current {
+                                player(track, size: geometry.size, horizontal: layout.horizontalPlayer && !layout.playerCompanion)
+                            } else {
+                                StudioEmptyState(symbol: "play.square", title: String(localized: "尚未播放"), detail: String(localized: "从音乐库选择一首歌曲，开始聆听。"))
+                                    .frame(maxWidth: .infinity, minHeight: geometry.size.height)
                             }
-                            .padding(.horizontal, 28).padding(.top, 4).padding(.bottom, 24)
-                            .frame(maxWidth: 460)
-                            .frame(maxWidth: .infinity)
-                        } else {
-                            StudioEmptyState(symbol: "play.square", title: String(localized: "尚未播放"), detail: String(localized: "从音乐库选择一首歌曲，开始聆听。"))
-                                .frame(maxWidth: .infinity, minHeight: geometry.size.height)
                         }
+                        Group {
+                            VStack(spacing: 0) {
+                                Picker(String(localized: "正在聆听"), selection: $companion) {
+                                    Text(String(localized: "播放队列")).tag(1)
+                                    Text(String(localized: "歌词")).tag(2)
+                                }.pickerStyle(.segmented).padding()
+                                if companion == 2 {
+                                    LyricsView(embedded: true)
+                                } else {
+                                    PlaybackQueueView(showsClose: false, embedded: true)
+                                }
+                            }
+                            .frame(width: max(360, geometry.size.width * 0.45))
+                            .overlay(alignment: .leading) { Rectangle().fill(Sunset.stroke(scheme)).frame(width: 1) }
+                        }
+                        .frame(width: layout.playerCompanion ? geometry.size.width * 0.45 : 0)
+                        .clipped()
+                        .opacity(layout.playerCompanion ? 1 : 0)
+                        .allowsHitTesting(layout.playerCompanion)
+                        .accessibilityHidden(!layout.playerCompanion)
                     }
+
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -77,6 +70,46 @@ struct NowPlayingView: View {
         .frame(width: 480)
         .frame(minHeight: 480, idealHeight: 640, maxHeight: 700)
         #endif
+    }
+
+    private func player(_ track: Track, size: CGSize, horizontal: Bool) -> some View {
+        let layout = horizontal ? AnyLayout(HStackLayout(alignment: .top, spacing: 24)) : AnyLayout(VStackLayout(spacing: 24))
+        return layout {
+            CoverArt(track: track, repository: store.repository, cornerRadius: 12)
+                .frame(maxWidth: typeSize.isAccessibilitySize ? 120 : (horizontal ? min(300, size.width * 0.32) : min(320, max(160, size.height * 0.40))))
+                .accessibilityHidden(true)
+            VStack(spacing: 20) {
+                trackDetails(track)
+                PlaybackTimeline(track: track).id(track.id)
+                transportControls
+                PlaybackModesView()
+                ViewThatFits(in: .horizontal) {
+                    HStack { replayGainLabel; Spacer(); replayGainPicker }
+                    VStack(alignment: .leading) { replayGainLabel; replayGainPicker }
+                }
+                VStack(spacing: 4) {
+                    queueLink
+                    NavigationLink(String(localized: "歌词"), value: 2).frame(minHeight: 44)
+                    Rectangle().fill(Sunset.stroke(scheme)).frame(height: 1)
+                    outputDetails(track)
+                }
+                .padding(12)
+                .background(Sunset.elevated(scheme), in: RoundedRectangle(cornerRadius: 18))
+            }
+        }
+        .padding(.horizontal, 20).padding(.top, 4).padding(.bottom, 24)
+        .frame(maxWidth: horizontal ? 1000 : 460)
+        .frame(maxWidth: .infinity)
+    }
+
+    private var replayGainLabel: some View {
+        Text("ReplayGain").font(.subheadline).foregroundStyle(.secondary)
+    }
+
+    private var replayGainPicker: some View {
+        Picker("ReplayGain", selection: Binding(get: { store.replayGainMode }, set: { store.setReplayGainMode($0) })) {
+            ForEach(ReplayGainMode.allCases) { mode in Text(mode.title).tag(mode) }
+        }.labelsHidden()
     }
 
     private func trackDetails(_ track: Track) -> some View {
@@ -107,7 +140,7 @@ struct NowPlayingView: View {
     }
 
     private var transportControls: some View {
-        HStack(spacing: 32) {
+        HStack(spacing: 16) {
             Button { store.previous() } label: {
                 Image(systemName: "backward.end.fill").font(.title3).frame(width: 56, height: 56)
             }.accessibilityLabel(String(localized: "上一首"))

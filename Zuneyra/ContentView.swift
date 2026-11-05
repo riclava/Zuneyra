@@ -6,6 +6,7 @@ struct ContentView: View {
     @Environment(\.colorScheme) private var scheme
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var visibleLibraryItem: String?
     @State private var availableSize: CGSize = .zero
     @State private var section: LibrarySection = .albums
     @State private var navigationGeneration = 0
@@ -64,7 +65,7 @@ struct ContentView: View {
         #if os(macOS)
         true
         #else
-        availableSize.width >= 1000 && availableSize.height >= 560 && !dynamicTypeSize.isAccessibilitySize
+        AdaptiveLayout(size: availableSize, accessibility: dynamicTypeSize.isAccessibilitySize).showsSidebar
         #endif
     }
 
@@ -89,7 +90,7 @@ struct ContentView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 if let current = store.current {
-                    MiniPlayerView(track: current, openPlayer: { searchFocused = false; showingPlayer = true }, openQueue: { showingQueue = true })
+                    MiniPlayerView(track: current, expanded: AdaptiveLayout(size: availableSize, accessibility: dynamicTypeSize.isAccessibilitySize).expandedMiniPlayer, openPlayer: { searchFocused = false; showingPlayer = true }, openQueue: { showingQueue = true })
                 }
             }
             .onChange(of: geometry.size, initial: true) { _, size in
@@ -119,7 +120,11 @@ struct ContentView: View {
             selectedIDs.formIntersection(Set(ids))
             if let key = selectedAlbum, !store.tracks.contains(where: { $0.albumKey == key }) { selectedAlbum = nil }
         }
+        #if os(iOS)
+        .fullScreenCover(isPresented: $showingPlayer) { NowPlayingView().environment(store) }
+        #else
         .sheet(isPresented: $showingPlayer) { NowPlayingView().environment(store) }
+        #endif
         .sheet(isPresented: $showingQueue) {
             NavigationStack { PlaybackQueueView() }.environment(store)
             #if os(macOS)
@@ -163,6 +168,7 @@ struct ContentView: View {
                         .padding(.horizontal, 24).padding(.top, 22).padding(.bottom, 24)
                         .frame(maxWidth: 1100, alignment: .leading).frame(maxWidth: .infinity)
                     }
+                    .scrollPosition(id: $visibleLibraryItem, anchor: .top)
                     .scrollDismissesKeyboard(.interactively)
                     .onChange(of: section) { _, _ in scroll.scrollTo("libraryTop", anchor: .top) }
                     .onChange(of: selectedAlbum) { _, _ in scroll.scrollTo("libraryTop", anchor: .top) }
@@ -577,6 +583,7 @@ struct ContentView: View {
                             Text(String(localized: "\(album.count) 首歌曲")).font(.caption).foregroundStyle(Sunset.secondary(scheme))
                         }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
                     }.buttonStyle(.plain).accessibilityLabel(String(localized: "专辑 \(album[0].album)"))
+                    .id("album:" + album[0].albumKey)
                     .contextMenu {
                         albumFavoriteButton(album[0])
                         Button(String(localized: "播放全部"), systemImage: "play.fill") { playAll(album) }
@@ -584,7 +591,7 @@ struct ContentView: View {
                         Button(String(localized: "添加到歌单"), systemImage: "music.note.list") { playlistAddRequest = PlaylistAddRequest(tracks: album) }.disabled(store.isBusy)
                     }
                 }
-            }
+            }.scrollTargetLayout()
         }
     }
 
@@ -771,12 +778,13 @@ struct ContentView: View {
                             Color.clear.frame(width: 44, height: 44)
                             #endif
                         }
-                    }.padding(.horizontal, 8).padding(.vertical, 9)
+                    }.id("track:" + track.id.uuidString)
+                        .padding(.horizontal, 8).padding(.vertical, 9)
                         .background(store.current?.id == track.id ? Sunset.accent(scheme).opacity(0.07) : .clear, in: RoundedRectangle(cornerRadius: 5))
                         .contextMenu { if allowSelection { songActions(track) } }
                     Rectangle().fill(Sunset.stroke(scheme).opacity(0.4)).frame(height: 1)
                 }
-            }
+            }.scrollTargetLayout()
         }
     }
     private var trackCoverSize: CGFloat {

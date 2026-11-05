@@ -32,14 +32,15 @@ struct PlaybackQueueView: View {
     @State private var sorting = false
     @Environment(\.dynamicTypeSize) private var typeSize
     var showsClose = true
+    var embedded = false
 
     var body: some View {
         VStack(spacing: 0) {
             CollectionSheetHeader(
                 title: String(localized: "播放队列"),
                 subtitle: String(localized: "\(store.queueState.canonical.count) 首歌曲"),
-                back: showsClose ? nil : { dismiss() },
-                close: showsClose ? { dismiss() } : nil
+                back: showsClose || embedded ? nil : { dismiss() },
+                close: showsClose && !embedded ? { dismiss() } : nil
             )
             queueControls
                 .padding(.horizontal, 28)
