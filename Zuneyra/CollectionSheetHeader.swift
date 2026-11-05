@@ -117,3 +117,86 @@ private struct EdgeNavigationModifier: ViewModifier {
         #endif
     }
 }
+
+extension View {
+    /// Cancel row actions once a drag starts, and keep them suppressed through scroll deceleration.
+    func guardActionsWhileScrolling() -> some View {
+        modifier(ScrollActionGuard())
+    }
+}
+
+private struct ScrollActionGuard: ViewModifier {
+    @GestureState private var dragActive = false
+    @State private var dragging = false
+    @State private var scrolling = false
+    @State private var suppressActions = false
+    @State private var releaseTask: Task<Void, Never>?
+
+    func body(content: Content) -> some View {
+        observeScrolling(content)
+            // Disable controls, not hit testing: touches must not pass through to views behind this page.
+            .disabled(suppressActions)
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 8)
+                    .updating($dragActive) { _, active, _ in active = true }
+                    .onChanged { _ in
+                        guard !dragging else { return }
+                        dragging = true
+                        suppress()
+                    }
+                    .onEnded { _ in
+                        dragging = false
+                        releaseWhenIdle()
+                    }
+            )
+            .onChange(of: dragActive) { _, active in
+                if !active {
+                    dragging = false
+                    releaseWhenIdle()
+                }
+            }
+            .onDisappear {
+                releaseTask?.cancel()
+                releaseTask = nil
+                dragging = false
+                scrolling = false
+                suppressActions = false
+            }
+    }
+
+    @ViewBuilder private func observeScrolling(_ content: Content) -> some View {
+        if #available(iOS 18.0, macOS 15.0, *) {
+            content.onScrollPhaseChange { _, phase in
+                switch phase {
+                case .interacting, .decelerating:
+                    scrolling = true
+                    suppress()
+                case .idle:
+                    scrolling = false
+                    releaseWhenIdle()
+                default: break
+                }
+            }
+        } else {
+            content
+        }
+    }
+
+    private func suppress() {
+        releaseTask?.cancel()
+        releaseTask = nil
+        suppressActions = true
+    }
+
+    private func releaseWhenIdle() {
+        guard suppressActions, !dragging, !scrolling else { return }
+        releaseTask?.cancel()
+        releaseTask = Task { @MainActor in
+            // Do not re-enable a pressed row during the same touch-up event.
+            try? await Task.sleep(for: .milliseconds(150))
+            guard !Task.isCancelled, !dragging, !scrolling else { return }
+            suppressActions = false
+            releaseTask = nil
+        }
+    }
+}

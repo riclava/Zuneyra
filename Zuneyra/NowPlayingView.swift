@@ -25,7 +25,7 @@ struct NowPlayingView: View {
                     HStack(spacing: 0) {
                         Group {
                             if let track = store.current {
-                                player(track, horizontal: geometry.size.width >= 600 && !layout.playerCompanion && !typeSize.isAccessibilitySize, compact: geometry.size.height < 560)
+                                player(track, horizontal: layout.horizontalPlayer && geometry.size.width > geometry.size.height && !layout.playerCompanion, compact: geometry.size.height < 560)
                             } else {
                                 StudioEmptyState(symbol: "play.square", title: String(localized: "尚未播放"), detail: String(localized: "从音乐库选择一首歌曲，开始聆听。"))
                                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -72,68 +72,56 @@ struct NowPlayingView: View {
     }
 
     private func player(_ track: Track, horizontal: Bool, compact: Bool) -> some View {
-        let layout = horizontal ? AnyLayout(HStackLayout(spacing: 24)) : AnyLayout(VStackLayout(spacing: compact ? 8 : 20))
-        return VStack(spacing: compact ? 8 : 20) {
-            layout {
-                VStack(spacing: 4) {
-                    GeometryReader { geometry in
-                        let side = max(0, min(300, min(geometry.size.width, geometry.size.height)))
-                        ZStack {
-                            // Keep both layers mounted so artwork is not reloaded on each toggle.
-                            Button { showingLyrics = true } label: {
-                                CoverArt(track: track, repository: store.repository, cornerRadius: 12)
-                                    .overlay(alignment: .bottomTrailing) {
-                                        Image(systemName: "quote.bubble")
-                                            .font(.body.weight(.medium))
-                                            .frame(width: 44, height: 44)
-                                            .background(Sunset.panel(scheme).opacity(0.94), in: Circle())
-                                            .padding(8)
-                                    }
-                            }
-                            .buttonStyle(ArtworkModeButtonStyle())
-                            .accessibilityLabel(String(localized: "显示歌词"))
-                            .accessibilityHint(String(localized: "点击封面切换到歌词模式"))
-                            .compositingGroup()
-                            .opacity(showingLyrics ? 0 : 1)
-                            .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: showingLyrics)
-                            .allowsHitTesting(!showingLyrics)
-                            .accessibilityHidden(showingLyrics)
-
-                            LyricsView { showingLyrics = false }
-                                .compositingGroup()
-                                .opacity(showingLyrics ? 1 : 0)
-                                .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: showingLyrics)
-                                .allowsHitTesting(showingLyrics)
-                                .accessibilityHidden(!showingLyrics)
-                        }
-                        .frame(width: side, height: side)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        GeometryReader { geometry in
+            let spacing: CGFloat = compact ? 12 : 20
+            let side = typeSize.isAccessibilitySize ? 120 : min(320,
+                min(geometry.size.width * (horizontal ? 0.40 : 0.78), geometry.size.height * (horizontal ? 0.72 : 0.42)))
+            let layout = horizontal ? AnyLayout(HStackLayout(alignment: .center, spacing: 28)) : AnyLayout(VStackLayout(spacing: spacing))
+            ScrollView {
+                layout {
+                    artwork(track)
+                        .frame(width: max(100, side), height: max(100, side))
+                    VStack(alignment: .leading, spacing: spacing) {
+                        trackDetails(track, compact: false)
+                        PlaybackTimeline(track: track).id(track.id)
+                        PlayerTransportControls(compact: compact)
+                        Rectangle().fill(Sunset.stroke(scheme)).frame(height: 1)
+                        utilityLinks
                     }
-                    if horizontal && compact { utilityLinks }
+                    .frame(maxWidth: 460)
                 }
-                VStack(spacing: compact ? 4 : 16) {
-                    trackDetails(track, compact: compact)
-                    if !compact { Rectangle().fill(Sunset.stroke(scheme)).frame(height: 1) }
-                    if !horizontal || !compact { utilityLinks }
-                }
-                .fixedSize(horizontal: false, vertical: true)
-                .layoutPriority(1)
+                .padding(.horizontal, 24).padding(.vertical, 16)
+                .frame(maxWidth: horizontal ? 1000 : 460)
+                .frame(maxWidth: .infinity, minHeight: geometry.size.height, alignment: .center)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            // Keep the seek bar and transport together, anchored above the safe area.
-            VStack(spacing: compact ? 4 : 16) {
-                PlaybackTimeline(track: track).id(track.id)
-                PlayerTransportControls(compact: compact)
-            }
-            .frame(maxWidth: 460)
-            .fixedSize(horizontal: false, vertical: true)
-            .layoutPriority(2)
         }
-        .padding(.horizontal, 24).padding(.top, 4).padding(.bottom, compact ? 8 : 20)
-        .frame(maxWidth: horizontal ? 1000 : 460)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func artwork(_ track: Track) -> some View {
+        ZStack {
+            Button { showingLyrics = true } label: {
+                CoverArt(track: track, repository: store.repository, cornerRadius: 12)
+                    .overlay(alignment: .bottomTrailing) {
+                        Image(systemName: "quote.bubble")
+                            .font(.body.weight(.medium))
+                            .frame(width: 44, height: 44)
+                            .background(Sunset.panel(scheme).opacity(0.94), in: Circle())
+                            .padding(8)
+                    }
+            }
+            .buttonStyle(ArtworkModeButtonStyle())
+            .accessibilityLabel(String(localized: "显示歌词"))
+            .accessibilityHint(String(localized: "点击封面切换到歌词模式"))
+            .opacity(showingLyrics ? 0 : 1)
+            .allowsHitTesting(!showingLyrics)
+            .accessibilityHidden(showingLyrics)
+            LyricsView { showingLyrics = false }
+                .opacity(showingLyrics ? 1 : 0)
+                .allowsHitTesting(showingLyrics)
+                .accessibilityHidden(!showingLyrics)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: showingLyrics)
     }
 
     private var utilityLinks: some View {

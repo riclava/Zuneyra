@@ -1,0 +1,73 @@
+{
+  "device": "iPhone Duo",
+  "runtime": "iOS 27.2 (24B91016s)",
+  "date": "2026-11-05",
+  "uploadStatus": "Uploaded to iOS 1.0 draft: English (U.S.) 4/10 and Chinese (Simplified) 4/10; not submitted for review",
+  "screenshots": [
+    {
+      "file": "en/iphone-duo/01-outer-library.jpg",
+      "dimensions": [
+        "  pixelWidth: 1398",
+        "  pixelHeight: 2034"
+      ],
+      "sha256": "0af3746fb9022206ba8b4d00357a4b3683ed3b7d2f86a331d3522e2e13d5f14b"
+    },
+    {
+      "file": "en/iphone-duo/02-inner-library.jpg",
+      "dimensions": [
+        "  pixelWidth: 2853",
+        "  pixelHeight: 2007"
+      ],
+      "sha256": "d1ac2dd1e9005f87e4b15514ee228a20a06b1c8eee9fefb5d249618abfebe8df"
+    },
+    {
+      "file": "en/iphone-duo/03-inner-player.jpg",
+      "dimensions": [
+        "  pixelWidth: 2853",
+        "  pixelHeight: 2007"
+      ],
+      "sha256": "c2f38eab308e2d33647f8b89d6841ace730243601dedc4e5b4cbf61589c4bf07"
+    },
+    {
+      "file": "en/iphone-duo/04-outer-player.jpg",
+      "dimensions": [
+        "  pixelWidth: 1398",
+        "  pixelHeight: 2034"
+      ],
+      "sha256": "a6eb61ac5723778d64bb9b27f1e01e6bfbde8348dc3052002c25bd650a0bf4b9"
+    },
+    {
+      "file": "zh-Hans/iphone-duo/01-outer-library.jpg",
+      "dimensions": [
+        "  pixelWidth: 1398",
+        "  pixelHeight: 2034"
+      ],
+      "sha256": "6656b9ff3c733d51e106bedba3d93382bd2eee9f4fc5ac31a5884b20023c30db"
+    },
+    {
+      "file": "zh-Hans/iphone-duo/02-inner-library.jpg",
+      "dimensions": [
+        "  pixelWidth: 2853",
+        "  pixelHeight: 2007"
+      ],
+      "sha256": "8fe7be6b26d46895a1554b54dde2a1642d6437e4a8000c2ea5cb4b166a574b1f"
+    },
+    {
+      "file": "zh-Hans/iphone-duo/03-inner-player.jpg",
+      "dimensions": [
+        "  pixelWidth: 2853",
+        "  pixelHeight: 2007"
+      ],
+      "sha256": "e46cbabb31fcaaa706bf01b56286fb8cac0a71fb5f021f2c9c942c5f342cb890"
+    },
+    {
+      "file": "zh-Hans/iphone-duo/04-outer-player.jpg",
+      "dimensions": [
+        "  pixelWidth: 1398",
+        "  pixelHeight: 2034"
+      ],
+      "sha256": "aaf4872e42dbac7f64f25762bc1d4837ad078a2417f77f6aa0c51cf029e2efab"
+    }
+  ],
+  "verificationNote": "Reuploaded stuck 04-outer-player.jpg in both locales. All four thumbnails now visibly rendered in English (U.S.) and Chinese (Simplified), each 4/10."
+}

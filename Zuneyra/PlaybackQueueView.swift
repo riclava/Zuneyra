@@ -36,12 +36,17 @@ struct PlaybackQueueView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            CollectionSheetHeader(
+            HStack(spacing: 0) {
+                CollectionSheetHeader(
                 title: String(localized: "播放队列"),
                 subtitle: String(localized: "\(store.queueState.canonical.count) 首歌曲"),
                 back: showsClose || embedded ? nil : { dismiss() },
                 close: showsClose && !embedded ? { dismiss() } : nil
-            )
+                )
+                if embedded {
+                    queueActions.padding(.trailing, 16)
+                }
+            }
             queueControls
                 .padding(.horizontal, 28)
                 .padding(.top, 4)
@@ -83,6 +88,7 @@ struct PlaybackQueueView: View {
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
+                .padding(.horizontal, embedded ? 16 : 0)
                 #if os(iOS)
                 .environment(\.editMode, .constant(sorting ? .active : .inactive))
                 #endif
@@ -100,7 +106,9 @@ struct PlaybackQueueView: View {
     }
 
     @ViewBuilder private var queueControls: some View {
-        if typeSize.isAccessibilitySize {
+        if embedded {
+            PlaybackModesView().frame(maxWidth: .infinity, alignment: .leading)
+        } else if typeSize.isAccessibilitySize {
             VStack(alignment: .leading, spacing: 12) {
                 PlaybackModesView()
                 queueActions

@@ -63,3 +63,23 @@ struct DeletionManifest: Codable {
     struct Entry: Codable { let trackID: UUID; let files: [String] }
     let entries: [Entry]
 }
+
+// Older records may contain only text failures, without retryable file references.
+extension ImportRecord {
+    var failureCount: Int { max(report.failures.count, report.failureItems.count) }
+}
+
+enum ImportHistoryFilter: String, CaseIterable, Identifiable {
+    case all, failures, stopped
+    var id: String { rawValue }
+    var title: String { switch self {
+    case .all: String(localized: "全部")
+    case .failures: String(localized: "有失败")
+    case .stopped: String(localized: "已停止")
+    } }
+    func includes(_ record: ImportRecord) -> Bool { switch self {
+    case .all: true
+    case .failures: record.failureCount > 0
+    case .stopped: record.report.cancelled
+    } }
+}

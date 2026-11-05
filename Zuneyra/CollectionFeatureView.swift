@@ -16,6 +16,28 @@ struct CollectionFeatureView: View {
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
+            if compact && !typeSize.isAccessibilitySize {
+                HStack(spacing: 16) {
+                    sleeve.frame(width: 80, height: 80)
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(isCurrent ? String(localized: "最近聆听") : String(localized: "从一张专辑开始"))
+                            .font(.caption.weight(.medium)).foregroundStyle(Sunset.accent(scheme))
+                        Text(track.album).font(.system(.title3, design: .serif, weight: .medium))
+                            .lineLimit(1).accessibilityAddTraits(.isHeader)
+                        Text(track.albumArtist + " · " + summary)
+                            .font(.caption).foregroundStyle(Sunset.secondary(scheme)).lineLimit(1)
+                        HStack(spacing: 8) {
+                            Button(action: play) {
+                                Image(systemName: "play.fill").frame(width: 44, height: 44)
+                                    .foregroundStyle(.white)
+                                    .background(Sunset.accent(scheme), in: RoundedRectangle(cornerRadius: 8))
+                            }.buttonStyle(.plain).disabled(disabled)
+                                .accessibilityLabel(isCurrent ? String(localized: "继续聆听") : String(localized: "播放专辑"))
+                            browseButton
+                        }
+                    }.frame(minWidth: 180, maxWidth: .infinity, alignment: .leading)
+                }
+            }
             if !typeSize.isAccessibilitySize {
                 HStack(spacing: compact ? 24 : 36) {
                     VStack(alignment: .leading, spacing: compact ? 14 : 22) {
@@ -38,7 +60,7 @@ struct CollectionFeatureView: View {
                 actions
             }
         }
-        .padding(compact ? 20 : 24)
+        .padding(compact ? 16 : 24)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Sunset.panel(scheme).opacity(0.65), in: RoundedRectangle(cornerRadius: 12))
     }

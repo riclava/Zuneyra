@@ -53,7 +53,7 @@ struct AdaptiveLayoutTests {
                                .init(width: 1000, height: 700), .init(width: 1000, height: 320)]
         let layouts = sizes.map { AdaptiveLayout(size: $0, accessibility: false) }
         #expect(layouts.map(\.showsSidebar) == [false, false, true, false])
-        #expect(layouts.map(\.horizontalPlayer) == [false, true, true, false])
+        #expect(layouts.map(\.horizontalPlayer) == [false, true, true, true])
         #expect(layouts.map(\.playerCompanion) == [false, false, true, false])
         #expect(layouts.map(\.expandedMiniPlayer) == [false, true, true, true])
         for size in sizes {

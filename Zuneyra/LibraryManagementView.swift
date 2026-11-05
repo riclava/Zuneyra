@@ -5,6 +5,8 @@ struct LibraryManagementView: View {
     @Environment(PlayerStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var scheme
+    @State private var historyFilter: ImportHistoryFilter = .all
+    @State private var refreshing = false
     @State private var tab: Int
     init(initialTab: Int = 0) { _tab = State(initialValue: initialTab) }
     @State private var confirmIncoming = false
@@ -42,11 +44,15 @@ struct LibraryManagementView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     ScrollView {
-                        VStack(alignment: .leading, spacing: 24) {
+                        LazyVStack(alignment: .leading, spacing: 24) {
                             if tab == 0 { storageContent }
                             else { historyContent }
-                        }.frame(maxWidth: .infinity, alignment: .leading).padding(24)
+                        }
+                        .frame(maxWidth: 760, alignment: .leading)
+                        .padding(24)
+                        .frame(maxWidth: .infinity)
                     }
+                    .id(tab)
                 }
             }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -113,69 +119,131 @@ struct LibraryManagementView: View {
     }
 
     @ViewBuilder private var storageContent: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Button(String(localized: "重新扫描音乐元数据"), systemImage: "arrow.triangle.2.circlepath") { store.rescanMetadata() }
-                .buttonStyle(StudioButtonStyle()).disabled(store.isBusy || store.tracks.isEmpty)
-            Text(String(localized: "重新读取标签、碟号、封面和增益信息，并补充缺失歌词。保留收藏、歌单、队列及已有歌词，不修改音频文件。"))
-                .font(.footnote).foregroundStyle(.secondary)
-        }
-
-        VStack(alignment: .leading, spacing: 12) {
-            #if os(macOS)
-            Button(String(localized: "引用音乐文件夹／重新授权…"), systemImage: "folder") { choosingReference = true }.disabled(store.isBusy)
-            Text(String(localized: "直接播放原位置文件，不额外保存音频副本。重新选择文件夹可扫描新增歌曲和更新已有引用的授权；外置磁盘需保持连接。")).font(.footnote).foregroundStyle(.secondary)
-            #endif
-            Text(String(localized: "备份与迁移")).font(.headline)
-            Button(String(localized: "导出 M3U8 歌单与音频…")) { importingPlaylists = false; choosingPlaylistFolder = true }.disabled(store.isBusy || store.playlists.isEmpty)
-            Button(String(localized: "导入 M3U8 所在文件夹…")) { importingPlaylists = true; choosingPlaylistFolder = true }.disabled(store.isBusy)
-            Button(String(localized: "导出音乐库备份…"), systemImage: "square.and.arrow.up") {
-                restoringBackup = false; choosingBackupFolder = true
-            }.disabled(store.isBusy)
-            Button(String(localized: "从备份合并恢复…"), systemImage: "square.and.arrow.down") {
-                restoringBackup = true; choosingBackupFolder = true
-            }.disabled(store.isBusy)
-            Text(String(localized: "备份包含音乐、收藏和歌单。恢复前会校验全部音频；相同音乐不重复复制，歌单作为新歌单加入。请选择备份文件夹。")).font(.footnote).foregroundStyle(.secondary)
-        }
-
         if let usage = store.storage {
-            VStack(alignment: .leading, spacing: 10) {
-                Text(String(localized: "已使用空间")).font(.caption.weight(.semibold)).foregroundStyle(Sunset.secondary(scheme))
-                Text(StorageUsage.formatted(usage.total)).font(.system(.largeTitle, design: .serif).weight(.medium).monospacedDigit())
-                Text(String(localized: "当前设备保存的文件大小")).font(.footnote).foregroundStyle(Sunset.secondary(scheme))
-            }
-            storageDistribution(usage)
-            VStack(spacing: 0) {
-                storageRow(String(localized: "音乐副本"), bytes: usage.audio, icon: "music.note")
-                if store.supportsIncomingFiles { storageRow(String(localized: "电脑传入文件"), bytes: usage.incoming, icon: "cable.connector") }
-                storageRow(String(localized: "封面缓存"), bytes: usage.artwork, icon: "photo")
-                storageRow(String(localized: "音乐库与导入记录"), bytes: usage.database, icon: "internaldrive")
-                if usage.temporary > 0 { storageRow(String(localized: "任务临时文件"), bytes: usage.temporary, icon: "clock") }
-            }.padding(.horizontal, 20)
-                .background(Sunset.elevated(scheme), in: RoundedRectangle(cornerRadius: 5))
-                .overlay { RoundedRectangle(cornerRadius: 5).stroke(Sunset.stroke(scheme), lineWidth: 1) }
-            if store.supportsIncomingFiles {
-                VStack(alignment: .leading, spacing: 10) {
-                    Button(String(localized: "清理已入库的传入文件"), systemImage: "trash") { confirmIncoming = true }
-                        .buttonStyle(StudioButtonStyle())
-                        .disabled(store.isBusy || usage.incomingFiles == 0)
-                    Text(String(localized: "Finder 传入文件和音乐库副本各占一份空间。清理前会核对两份内容；清理后仍可播放音乐库中的副本。"))
-                        .font(.footnote).foregroundStyle(.secondary)
+            managementCard {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(String(localized: "已使用空间")).font(.subheadline).foregroundStyle(Sunset.secondary(scheme))
+                        Text(StorageUsage.formatted(usage.total))
+                            .font(.system(.largeTitle, design: .serif, weight: .medium)).monospacedDigit()
+                        Text(String(localized: "当前设备保存的文件大小"))
+                            .font(.caption).foregroundStyle(Sunset.secondary(scheme))
+                    }
+                    Spacer(minLength: 8)
+                    Button { refreshStorage() } label: {
+                        if refreshing { ProgressView().frame(width: 44, height: 44) }
+                        else { Image(systemName: "arrow.clockwise").frame(width: 44, height: 44) }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(String(localized: "刷新存储占用"))
+                    .disabled(store.isBusy || refreshing)
+                }
+                storageDistribution(usage).padding(.top, 8)
+                VStack(spacing: 0) {
+                    storageRow(String(localized: "音乐副本"), bytes: usage.audio, icon: "music.note")
+                    if store.supportsIncomingFiles { storageRow(String(localized: "电脑传入文件"), bytes: usage.incoming, icon: "cable.connector") }
+                    storageRow(String(localized: "封面缓存"), bytes: usage.artwork, icon: "photo")
+                    storageRow(String(localized: "音乐库与导入记录"), bytes: usage.database, icon: "internaldrive")
+                    if usage.temporary > 0 { storageRow(String(localized: "任务临时文件"), bytes: usage.temporary, icon: "clock") }
                 }
             }
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 8) { maintenanceActions(usage) }
-                VStack(alignment: .leading, spacing: 8) { maintenanceActions(usage) }
+
+            managementCard {
+                sectionTitle(String(localized: "空间清理"), icon: "sparkles")
+                if store.supportsIncomingFiles {
+                    managementAction(String(localized: "清理已入库的传入文件"), icon: "tray.and.arrow.down",
+                                     detail: String(localized: "Finder 传入文件和音乐库副本各占一份空间。清理前会核对两份内容；清理后仍可播放音乐库中的副本。"),
+                                     disabled: store.isBusy || usage.incomingFiles == 0) { confirmIncoming = true }
+                    Divider()
+                }
+                managementAction(String(localized: "清理封面缓存"), icon: "photo",
+                                 detail: String(localized: "音乐和收藏不受影响。再次浏览时会从音频中重新生成封面。"),
+                                 disabled: store.isBusy || usage.artwork == 0) { confirmArtwork = true }
             }
-        } else { ProgressView(String(localized: "正在统计存储空间…")) }
+        } else {
+            ProgressView(String(localized: "正在统计存储空间…"))
+                .frame(maxWidth: .infinity, minHeight: 180)
+        }
+
+        managementCard {
+            DisclosureGroup {
+                VStack(alignment: .leading, spacing: 12) {
+                    managementAction(String(localized: "导出音乐库备份…"), icon: "square.and.arrow.up", disabled: store.isBusy) {
+                        restoringBackup = false; choosingBackupFolder = true
+                    }
+                    managementAction(String(localized: "从备份合并恢复…"), icon: "square.and.arrow.down", disabled: store.isBusy) {
+                        restoringBackup = true; choosingBackupFolder = true
+                    }
+                    Text(String(localized: "备份包含音乐、收藏和歌单。恢复前会校验全部音频；相同音乐不重复复制，歌单作为新歌单加入。请选择备份文件夹。"))
+                        .font(.caption).foregroundStyle(Sunset.secondary(scheme))
+                    Divider()
+                    managementAction(String(localized: "导出 M3U8 歌单与音频…"), icon: "music.note.list", disabled: store.isBusy || store.playlists.isEmpty) {
+                        importingPlaylists = false; choosingPlaylistFolder = true
+                    }
+                    managementAction(String(localized: "导入 M3U8 所在文件夹…"), icon: "folder", disabled: store.isBusy) {
+                        importingPlaylists = true; choosingPlaylistFolder = true
+                    }
+                }.padding(.top, 12)
+            } label: { sectionTitle(String(localized: "备份与迁移"), icon: "externaldrive") }
+        }
+
+        managementCard {
+            DisclosureGroup {
+                VStack(alignment: .leading, spacing: 12) {
+                    managementAction(String(localized: "重新扫描音乐元数据"), icon: "arrow.triangle.2.circlepath",
+                                     detail: String(localized: "重新读取标签、碟号、封面和增益信息，并补充缺失歌词。保留收藏、歌单、队列及已有歌词，不修改音频文件。"),
+                                     disabled: store.isBusy || store.tracks.isEmpty) { store.rescanMetadata() }
+                    #if os(macOS)
+                    Divider()
+                    managementAction(String(localized: "引用音乐文件夹／重新授权…"), icon: "folder",
+                                     detail: String(localized: "直接播放原位置文件，不额外保存音频副本。重新选择文件夹可扫描新增歌曲和更新已有引用的授权；外置磁盘需保持连接。"),
+                                     disabled: store.isBusy) { choosingReference = true }
+                    #endif
+                }.padding(.top, 12)
+            } label: { sectionTitle(String(localized: "音乐库维护"), icon: "wrench.and.screwdriver") }
+        }
     }
 
-    private func maintenanceActions(_ usage: StorageUsage) -> some View {
-        Group {
-            Button(String(localized: "清理封面缓存"), systemImage: "photo") { confirmArtwork = true }
-                .disabled(store.isBusy || usage.artwork == 0)
-            Button(String(localized: "刷新存储占用"), systemImage: "arrow.clockwise") { Task { await store.refreshManagement() } }
-                .disabled(store.isBusy)
-        }.buttonStyle(StudioButtonStyle())
+    private func managementCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 16, content: content)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(20)
+            .background(Sunset.elevated(scheme), in: RoundedRectangle(cornerRadius: 16))
+            .overlay { RoundedRectangle(cornerRadius: 16).stroke(Sunset.stroke(scheme), lineWidth: 1) }
+    }
+
+    private func sectionTitle(_ title: String, icon: String) -> some View {
+        Label(title, systemImage: icon)
+            .font(.headline).foregroundStyle(Sunset.secondary(scheme))
+            .frame(minHeight: 44, alignment: .leading)
+    }
+
+    private func managementAction(_ title: String, icon: String, detail: String? = nil,
+                                  disabled: Bool = false, action: @escaping () -> Void) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Button(action: action) {
+                HStack(spacing: 12) {
+                    Image(systemName: icon).frame(width: 24).foregroundStyle(Sunset.accent(scheme))
+                    Text(title).font(.subheadline.weight(.medium)).frame(maxWidth: .infinity, alignment: .leading)
+                    Image(systemName: "chevron.right").font(.caption).foregroundStyle(Sunset.secondary(scheme))
+                }
+                .frame(minHeight: 44).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain).disabled(disabled)
+            if let detail {
+                Text(detail).font(.caption).foregroundStyle(Sunset.secondary(scheme))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func refreshStorage() {
+        guard !refreshing else { return }
+        refreshing = true
+        Task {
+            await store.refreshManagement()
+            refreshing = false
+        }
     }
 
     private func storageDistribution(_ usage: StorageUsage) -> some View {
@@ -208,32 +276,87 @@ struct LibraryManagementView: View {
             Rectangle().fill(Sunset.stroke(scheme)).frame(height: 1)
         }
     }
+    private var filteredHistory: [ImportRecord] {
+        store.history.filter { historyFilter.includes($0) }
+    }
+
     @ViewBuilder private var historyContent: some View {
-        Text(String(localized: "保留最近 100 次导入结果")).font(.footnote).foregroundStyle(.secondary)
-        ForEach(store.history) { record in
-            DisclosureGroup {
-                VStack(alignment: .leading, spacing: 12) {
-                    ForEach(record.report.failureItems) { item in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(item.filename).font(.subheadline.bold())
-                            Text(item.reason).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
-                        }
-                    }
-                    if !record.report.failureItems.isEmpty {
-                        Button(String(localized: "重试失败文件"), systemImage: "arrow.clockwise") { store.retryImport(record) }.disabled(store.isBusy)
-                        Button(String(localized: "重新选择来源…"), systemImage: "folder") { choosingFiles = true }.disabled(store.isBusy)
-                        Text(String(localized: "若文件已移动或访问权限失效，请重新选择来源。重试会生成一条新记录。"))
-                            .font(.footnote).foregroundStyle(.secondary)
-                    }
-                }.padding(.vertical, 12)
-            } label: {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(record.source + (record.report.cancelled ? String(localized: " · 已停止") : "")).font(.headline)
-                    Text(record.date.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary)
-                    Text(String(localized: "导入 \(record.report.added) · 重复 \(record.report.duplicates) · 失败 \(record.report.failures.count)")).font(.subheadline)
-                }.padding(.vertical, 6)
+        managementCard {
+            sectionTitle(String(localized: "导入概览"), icon: "clock.arrow.circlepath")
+            HStack(spacing: 8) {
+                historyMetric(String(localized: "已导入"), count: store.history.reduce(0) { $0 + $1.report.added })
+                historyMetric(String(localized: "重复跳过"), count: store.history.reduce(0) { $0 + $1.report.duplicates })
+                historyMetric(String(localized: "失败"), count: store.history.reduce(0) { $0 + $1.failureCount })
             }
-            Divider()
+            Text(String(localized: "保留最近 100 次导入结果"))
+                .font(.caption).foregroundStyle(Sunset.secondary(scheme))
+        }
+        Picker(String(localized: "导入记录筛选"), selection: $historyFilter) {
+            ForEach(ImportHistoryFilter.allCases) { filter in Text(filter.title).tag(filter) }
+        }
+        .pickerStyle(.segmented)
+        if filteredHistory.isEmpty {
+            StudioEmptyState(symbol: "checkmark.circle", title: String(localized: "没有符合条件的记录"),
+                             detail: String(localized: "切换到“全部”查看其他导入记录。"))
+                .frame(maxWidth: .infinity).padding(.vertical, 24)
+        } else {
+            ForEach(filteredHistory) { record in historyCard(record) }
+        }
+    }
+
+    private func historyMetric(_ title: String, count: Int) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(count.formatted()).font(.title2.weight(.medium)).monospacedDigit()
+            Text(title).font(.caption).foregroundStyle(Sunset.secondary(scheme))
+        }.frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func historyCard(_ record: ImportRecord) -> some View {
+        managementCard {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: record.report.cancelled ? "pause.circle" : record.failureCount > 0 ? "exclamationmark.circle" : "checkmark.circle")
+                    .font(.title3).foregroundStyle(record.failureCount > 0 ? Sunset.accent(scheme) : Sunset.secondary(scheme))
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(record.source).font(.headline).fixedSize(horizontal: false, vertical: true)
+                    Text(record.date.formatted(date: .abbreviated, time: .shortened))
+                        .font(.caption).foregroundStyle(Sunset.secondary(scheme))
+                }
+                Spacer(minLength: 0)
+                Text(record.report.cancelled ? String(localized: "已停止") : record.failureCount > 0 ? String(localized: "有失败") : String(localized: "已完成"))
+                    .font(.caption.weight(.medium)).fixedSize()
+                    .padding(.horizontal, 8).padding(.vertical, 5)
+                    .background(Sunset.secondary(scheme).opacity(0.08), in: Capsule())
+            }
+            Text(String(localized: "导入 \(record.report.added) · 重复 \(record.report.duplicates) · 失败 \(record.failureCount)"))
+                .font(.subheadline).foregroundStyle(Sunset.secondary(scheme))
+            if record.failureCount > 0 {
+                DisclosureGroup(String(localized: "查看失败详情")) {
+                    VStack(alignment: .leading, spacing: 16) {
+                        if record.report.failureItems.isEmpty {
+                            ForEach(Array(record.report.failures.enumerated()), id: \.offset) { _, failure in
+                                Text(failure).font(.caption).textSelection(.enabled)
+                            }
+                        } else {
+                            ForEach(record.report.failureItems) { item in
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(item.filename).font(.subheadline.weight(.medium)).textSelection(.enabled)
+                                    Text(item.reason).font(.caption).foregroundStyle(Sunset.secondary(scheme)).textSelection(.enabled)
+                                }
+                            }
+                        }
+                        if !record.report.failureItems.isEmpty {
+                            managementAction(String(localized: "重试失败文件"), icon: "arrow.clockwise", disabled: store.isBusy) {
+                                store.retryImport(record)
+                            }
+                        }
+                        managementAction(String(localized: "重新选择来源…"), icon: "folder", disabled: store.isBusy) { choosingFiles = true }
+                        Text(String(localized: "若文件已移动或访问权限失效，请重新选择来源。重试会生成一条新记录。"))
+                            .font(.caption).foregroundStyle(Sunset.secondary(scheme))
+                    }.padding(.top, 12)
+                }
+                .font(.subheadline)
+            }
         }
     }
 }

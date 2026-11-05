@@ -5,8 +5,8 @@ struct AdaptiveLayout {
     let size: CGSize
     let accessibility: Bool
 
-    var showsSidebar: Bool { size.width >= 900 && size.height >= 560 && !accessibility }
-    var horizontalPlayer: Bool { size.width >= 600 && size.height >= 360 && !accessibility }
-    var playerCompanion: Bool { size.width >= 900 && size.height >= 560 && !accessibility }
+    var showsSidebar: Bool { size.width >= 820 && size.height >= 560 && !accessibility }
+    var horizontalPlayer: Bool { size.width >= 560 && size.height >= 260 && !accessibility }
+    var playerCompanion: Bool { size.width >= 820 && size.height >= 560 && !accessibility }
     var expandedMiniPlayer: Bool { size.width >= 700 && !accessibility }
 }

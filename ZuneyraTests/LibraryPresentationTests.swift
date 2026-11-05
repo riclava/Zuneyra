@@ -3,6 +3,22 @@ import Testing
 @testable import Zuneyra
 
 struct LibraryPresentationTests {
+    @Test func importHistoryFiltersIncludeLegacyFailuresAndStoppedPartialImports() {
+        let complete = ImportRecord(id: UUID(), date: .now, source: "Complete", report: ImportReport(added: 2))
+        let legacy = ImportRecord(id: UUID(), date: .now, source: "Legacy", report: ImportReport(failures: ["Unreadable audio"]))
+        let partial = ImportRecord(id: UUID(), date: .now, source: "Stopped",
+                                   report: ImportReport(added: 1, failures: ["Unreadable audio"], cancelled: true))
+        #expect(ImportHistoryFilter.all.includes(complete))
+        #expect(!ImportHistoryFilter.failures.includes(complete))
+        #expect(!ImportHistoryFilter.stopped.includes(complete))
+        #expect(legacy.failureCount == 1)
+        #expect(ImportHistoryFilter.failures.includes(legacy))
+        #expect(!ImportHistoryFilter.stopped.includes(legacy))
+        #expect(ImportHistoryFilter.failures.includes(partial))
+        #expect(ImportHistoryFilter.stopped.includes(partial))
+        #expect(partial.report.added == 1)
+    }
+
     @Test func lyricsHandleOffsetsRepeatedTimesAndPlainText() {
         let lyrics = Lyrics("[offset:-500]\n[00:01.00][00:03.25]Hello\n[00:02]World")
         #expect(lyrics.lines.map(\.time) == [0.5, 1.5, 2.75])

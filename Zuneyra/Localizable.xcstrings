@@ -1,167 +1,8 @@
 {
   "sourceLanguage" : "zh-Hans",
   "strings" : {
-    "文件格式" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "File Format"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "文件格式"
-          }
-        }
-      }
-    },
-    "歌曲信息" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Track Info"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "歌曲信息"
-          }
-        }
-      }
-    },
-    "选择歌词" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Select Lyric Line"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "选择歌词"
-          }
-        }
-      }
-    },
-    "返回封面" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Back to Artwork"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "返回封面"
-          }
-        }
-      }
-    },
-    "点击封面切换到歌词模式" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tap the artwork to show lyrics"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "点击封面切换到歌词模式"
-          }
-        }
-      }
-    },
-    "显示歌词" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Show Lyrics"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "显示歌词"
-          }
-        }
-      }
-    },
-    "歌词设置" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Lyrics Settings"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "歌词设置"
-          }
-        }
-      }
-    },
-    "回到当前句" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Back to Current Line"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "回到当前句"
-          }
-        }
-      }
-    },
-    "从这里播放 %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Play from %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "从这里播放 %@"
-          }
-        }
-      }
-    },
-    "选择后可跳转到这一句" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Select this line to seek to it"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "选择后可跳转到这一句"
-          }
-        }
-      }
-    },
     " · 已停止" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -981,6 +822,22 @@
         }
       }
     },
+    "从这里播放 %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Play from %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "从这里播放 %@"
+          }
+        }
+      }
+    },
     "从队列移除不会删除音乐库中的歌曲。" : {
       "localizations" : {
         "en" : {
@@ -1217,6 +1074,22 @@
         }
       }
     },
+    "全部" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "All"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全部"
+          }
+        }
+      }
+    },
     "全部专辑" : {
       "localizations" : {
         "en" : {
@@ -1373,6 +1246,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "最近聆听"
+          }
+        }
+      }
+    },
+    "切换到“全部”查看其他导入记录。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Select All to view other import records."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "切换到“全部”查看其他导入记录。"
           }
         }
       }
@@ -1725,6 +1614,22 @@
         }
       }
     },
+    "回到当前句" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Back to Current Line"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "回到当前句"
+          }
+        }
+      }
+    },
     "在歌曲菜单中点“收藏”，喜欢的音乐会集中保存在这里。" : {
       "localizations" : {
         "en" : {
@@ -1933,6 +1838,22 @@
         }
       }
     },
+    "失败" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Failed"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "失败"
+          }
+        }
+      }
+    },
     "好" : {
       "localizations" : {
         "en" : {
@@ -2077,6 +1998,22 @@
         }
       }
     },
+    "导入概览" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Import Overview"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "导入概览"
+          }
+        }
+      }
+    },
     "导入歌词…" : {
       "localizations" : {
         "en" : {
@@ -2153,6 +2090,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "导入记录损坏"
+          }
+        }
+      }
+    },
+    "导入记录筛选" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Filter Import History"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "导入记录筛选"
           }
         }
       }
@@ -2329,6 +2282,22 @@
         }
       }
     },
+    "已停止" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stopped"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已停止"
+          }
+        }
+      }
+    },
     "已加入「%@」，已有歌曲不会重复添加。" : {
       "localizations" : {
         "en" : {
@@ -2345,6 +2314,22 @@
         }
       }
     },
+    "已完成" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Completed"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已完成"
+          }
+        }
+      }
+    },
     "已完成的歌曲会保留，未完成的文件可以重新导入。" : {
       "localizations" : {
         "en" : {
@@ -2357,6 +2342,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已完成的歌曲会保留，未完成的文件可以重新导入。"
+          }
+        }
+      }
+    },
+    "已导入" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Imported"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已导入"
           }
         }
       }
@@ -3338,6 +3339,22 @@
         }
       }
     },
+    "文件格式" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "File Format"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文件格式"
+          }
+        }
+      }
+    },
     "新导入的音乐已保存在本机，可以离线聆听。" : {
       "localizations" : {
         "en" : {
@@ -3786,6 +3803,22 @@
         }
       }
     },
+    "显示歌词" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show Lyrics"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示歌词"
+          }
+        }
+      }
+    },
     "暂停" : {
       "localizations" : {
         "en" : {
@@ -3878,6 +3911,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "更多操作"
+          }
+        }
+      }
+    },
+    "有失败" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "With Failures"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有失败"
           }
         }
       }
@@ -4022,6 +4071,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "查看专辑"
+          }
+        }
+      }
+    },
+    "查看失败详情" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "View Failure Details"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查看失败详情"
           }
         }
       }
@@ -4458,6 +4523,22 @@
         }
       }
     },
+    "歌曲信息" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Track Info"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "歌曲信息"
+          }
+        }
+      }
+    },
     "歌曲删除未完成" : {
       "localizations" : {
         "en" : {
@@ -4566,6 +4647,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "歌词文件不能超过 1 MB"
+          }
+        }
+      }
+    },
+    "歌词设置" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lyrics Settings"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "歌词设置"
           }
         }
       }
@@ -4922,6 +5019,22 @@
         }
       }
     },
+    "没有符合条件的记录" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No Matching Records"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有符合条件的记录"
+          }
+        }
+      }
+    },
     "浏览歌曲" : {
       "localizations" : {
         "en" : {
@@ -5126,6 +5239,22 @@
         }
       }
     },
+    "点击封面切换到歌词模式" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tap the artwork to show lyrics"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "点击封面切换到歌词模式"
+          }
+        }
+      }
+    },
     "电脑传入文件" : {
       "localizations" : {
         "en" : {
@@ -5234,6 +5363,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "稍后播放"
+          }
+        }
+      }
+    },
+    "空间清理" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Free Up Space"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "空间清理"
           }
         }
       }
@@ -5382,6 +5527,22 @@
         }
       }
     },
+    "返回封面" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Back to Artwork"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "返回封面"
+          }
+        }
+      }
+    },
     "返回音乐库，查看其他歌单。" : {
       "localizations" : {
         "en" : {
@@ -5526,6 +5687,22 @@
         }
       }
     },
+    "选择后可跳转到这一句" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Select this line to seek to it"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择后可跳转到这一句"
+          }
+        }
+      }
+    },
     "选择文件或文件夹" : {
       "localizations" : {
         "en" : {
@@ -5554,6 +5731,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "选择歌曲"
+          }
+        }
+      }
+    },
+    "选择歌词" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Select Lyric Line"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择歌词"
           }
         }
       }
@@ -5634,6 +5827,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "重命名歌单"
+          }
+        }
+      }
+    },
+    "重复跳过" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Duplicates Skipped"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重复跳过"
           }
         }
       }
@@ -5890,6 +6099,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "音乐库管理"
+          }
+        }
+      }
+    },
+    "音乐库维护" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Library Maintenance"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音乐库维护"
           }
         }
       }

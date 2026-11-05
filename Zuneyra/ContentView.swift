@@ -114,7 +114,7 @@ struct ContentView: View {
 
     private var compactFeature: Bool {
         #if os(iOS)
-        usesSidebar
+        !dynamicTypeSize.isAccessibilitySize
         #else
         false
         #endif
@@ -239,6 +239,7 @@ struct ContentView: View {
                 ) { item in
                     ScrollViewReader { scroll in
                         ScrollView { pageContents(for: item) }
+                            .guardActionsWhileScrolling()
                             .scrollPosition(id: Binding(
                                 get: { visibleLibraryItems[item] },
                                 set: { visibleLibraryItems[item] = $0 }
@@ -977,7 +978,8 @@ private struct LibraryCategoryPager<Page: View>: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .scrollDisabled(item != selection || axis == .horizontal || settling)
                     .offset(x: CGFloat(item.distance(from: selection)) * width + (reduceMotion ? 0 : offset))
-                    .allowsHitTesting(item == selection && !settling)
+                    .disabled(settling || (gestureActive && axis != nil))
+                    .allowsHitTesting(item == selection)
                     .accessibilityHidden(item != selection)
             }
         }
@@ -985,6 +987,11 @@ private struct LibraryCategoryPager<Page: View>: View {
         .clipped()
         .animation(reduceMotion ? nil : .easeOut(duration: 0.20), value: selection)
         .coordinateSpace(name: "libraryPaging")
+        .overlay {
+            if settling {
+                Color.clear.contentShape(Rectangle()).onTapGesture { }
+            }
+        }
         #if os(iOS)
         .simultaneousGesture(
             DragGesture(minimumDistance: 8, coordinateSpace: .named("libraryPaging"))
