@@ -64,3 +64,30 @@ Zuneyra 在设备上保存用户导入的音乐、歌曲标签、封面、歌词
 ## 截图拍摄清单
 
 使用具有许可的封面与音频：专辑库、专辑详情、正在播放、歌词、歌单、备份管理。分别检查中文／英文、iPhone／iPad／Mac；不把单元测试空白库截图当作商店宣传素材。
+
+
+## 2026-11-05 分发上传记录
+
+iOS 与 macOS 的 1.0（1）均已通过 Xcode App Store Connect 分发上传。源代码为 `0db41e6`，归档位于 `/tmp/zuneyra-submit/ios-final.xcarchive` 和 `/tmp/zuneyra-submit/mac-final.xcarchive`。日志 `/tmp/zuneyra-submit-ios-upload.log` 与 `/tmp/zuneyra-submit-mac-upload.log` 均显示 `Upload succeeded`、`EXPORT SUCCEEDED`。两个平台已关联构建并回答加密合规问题。
+
+中英文说明、关键词、支持 URL、审核联系人及无需登录的审核说明已填写。分类为 Music，年龄分级 4+。隐私问卷已保存“不收集数据”，尚待用户确认 Apple 发布承诺；价格及地区待用户指定，尚未提交审核。
+
+公开支持页：
+- https://castorworks.github.io/zuneyra/
+- https://castorworks.github.io/zuneyra/zh/
+
+公开隐私政策：
+- https://castorworks.github.io/zuneyra/privacy/
+- https://castorworks.github.io/zuneyra/zh/privacy/
+
+内容已推送至 `castorworks/castorworks.github.io` 并验证 GitHub Pages 部署成功及 HTTP 200；隐私文档另保存在 `castorworks/Privacy/Zuneyra`。
+
+
+## 2026-11-06 正式提审
+
+用户已确认发布“不收集数据”的隐私标签，两个平台免费，全部可用地区。隐私标签已发布，价格基准为 USD 0.00，所有地区对应价格为 0。可用性设置为所有 175 个国家或地区及未来新增地区（实际销售仍由 Apple 的地区要求决定）。
+
+- iOS 1.0（1）：Waiting for Review；提交记录 `ff087d15-cc16-40e1-99cc-7f9ad73b79ac`。
+- macOS 1.0（1）：Waiting for Review；提交记录 `afe9c6fd-3747-4c7f-bf1e-0bbcad588bec`。
+
+后台 App Review 列表已确认两个平台均等待审核，草稿数为 0。沿用现有审核通过后自动发布设置。截图凭证：`/tmp/zuneyra-both-submitted.jpg`。
