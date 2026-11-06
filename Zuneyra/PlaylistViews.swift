@@ -57,6 +57,7 @@ struct PlaylistLibraryView: View {
     @Environment(\.colorScheme) private var scheme
     @Environment(\.dynamicTypeSize) private var typeSize
     let query: String
+    let openPlaylist: (UUID) -> Void
     @State private var creating = false
     private var filtered: [Playlist] { store.playlists.filter { query.isEmpty || $0.name.localizedStandardContains(query) } }
     private var columns: [GridItem] {
@@ -77,7 +78,7 @@ struct PlaylistLibraryView: View {
                         .font(.subheadline).foregroundStyle(Sunset.secondary(scheme))
                         .fixedSize(horizontal: false, vertical: true)
                 }.frame(maxWidth: .infinity, alignment: .leading)
-                Button { creating = true } label: { Label(String(localized: "新建歌单"), systemImage: "plus") }
+                SwipeSafeButton { creating = true } label: { Label(String(localized: "新建歌单"), systemImage: "plus") }
                     .buttonStyle(StudioButtonStyle(prominent: true)).protectLibraryAction()
                     .disabled(store.isBusy)
             }
@@ -90,7 +91,7 @@ struct PlaylistLibraryView: View {
                 LazyVGrid(columns: columns, alignment: .leading, spacing: 32) {
                     ForEach(filtered) { playlist in
                         let tracks = store.playlistTracks(playlist.id)
-                        NavigationLink(value: playlist.id) {
+                        SwipeSafeButton { openPlaylist(playlist.id) } label: {
                             playlistCard(playlist, tracks: tracks)
                         }
                         .buttonStyle(.plain).protectLibraryAction()
@@ -195,7 +196,7 @@ struct AddToPlaylistView: View {
             List {
                 Section {
                     TextField(String(localized: "新歌单名称"), text: $name).autocorrectionDisabled().listRowBackground(Color.clear)
-                    Button { add(to: nil) } label: {
+                    SwipeSafeButton { add(to: nil) } label: {
                         Label(String(localized: "新建并加入"), systemImage: "plus").frame(maxWidth: .infinity, minHeight: 32)
                     }
                         .buttonStyle(StudioButtonStyle(prominent: true))
@@ -205,7 +206,7 @@ struct AddToPlaylistView: View {
                 Section(String(localized: "已有歌单")) {
                     if store.playlists.isEmpty { Text(String(localized: "还没有歌单，也可以在上方直接新建。")).foregroundStyle(.secondary).listRowBackground(Color.clear) }
                     ForEach(store.playlists) { playlist in
-                        Button { add(to: playlist.id) } label: {
+                        SwipeSafeButton { add(to: playlist.id) } label: {
                             HStack(spacing: 12) {
                                 PlaylistArtwork(tracks: Array(store.playlistTracks(playlist.id).prefix(4))).frame(width: 44, height: 44)
                                 VStack(alignment: .leading, spacing: 4) {
@@ -215,11 +216,11 @@ struct AddToPlaylistView: View {
                                 Spacer()
                                 Image(systemName: "plus.circle").foregroundStyle(Sunset.accent(scheme))
                             }.frame(minHeight: 48).contentShape(Rectangle())
-                        }.buttonStyle(.plain).disabled(store.isBusy || tracks.isEmpty).accessibilityLabel(String(localized: "加入歌单 \(playlist.name)"))
+                        }.buttonStyle(.plain).protectLibraryAction().disabled(store.isBusy || tracks.isEmpty).accessibilityLabel(String(localized: "加入歌单 \(playlist.name)"))
                             .listRowBackground(Color.clear)
                     }
                 }
-            }.listStyle(.plain).scrollContentBackground(.hidden).background(Sunset.background(scheme))
+            }.guardActionsWhileScrolling().listStyle(.plain).scrollContentBackground(.hidden).background(Sunset.background(scheme))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Sunset.background(scheme).ignoresSafeArea())
@@ -272,7 +273,8 @@ struct PlaylistDetailView: View {
                         if tracks.isEmpty {
                             VStack(spacing: 16) {
                                 StudioEmptyState(symbol: "music.note", title: String(localized: "歌单还没有歌曲"), detail: String(localized: "从音乐库中选择歌曲，添加到这个歌单。"))
-                                Button(String(localized: "添加歌曲"), systemImage: "plus") { adding = true }
+                                SwipeSafeButton { adding = true } label: { Label(String(localized: "添加歌曲"), systemImage: "plus") }
+                                    .protectLibraryAction()
                                     .buttonStyle(StudioButtonStyle(prominent: true)).disabled(store.isBusy)
                             }.frame(maxWidth: .infinity).padding(.vertical, 24)
                         }
@@ -284,6 +286,7 @@ struct PlaylistDetailView: View {
                             }
                     } header: { Text(String(localized: "歌曲")) } footer: { Text(sorting ? String(localized: "拖动歌曲右侧的把手调整顺序，完成后点击“完成排序”。") : String(localized: "从歌单移除歌曲不会删除音乐库文件。")) }
                 }
+                .guardActionsWhileScrolling()
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
                 #if os(iOS)
@@ -357,9 +360,9 @@ struct PlaylistDetailView: View {
     private var playbackActions: some View {
         let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))
         return layout {
-            Button { store.playPlaylist(playlistID) } label: { Label(String(localized: "播放全部"), systemImage: "play.fill") }
+            SwipeSafeButton { store.playPlaylist(playlistID) } label: { Label(String(localized: "播放全部"), systemImage: "play.fill") }
                 .buttonStyle(StudioButtonStyle(prominent: true))
-            Button { store.playPlaylist(playlistID, shuffled: true) } label: { Label(String(localized: "随机播放"), systemImage: "shuffle") }
+            SwipeSafeButton { store.playPlaylist(playlistID, shuffled: true) } label: { Label(String(localized: "随机播放"), systemImage: "shuffle") }
                 .buttonStyle(StudioButtonStyle())
         }
         .font(.subheadline.weight(.semibold))
@@ -367,7 +370,7 @@ struct PlaylistDetailView: View {
     }
     private func songRow(_ track: Track) -> some View {
         HStack(spacing: 12) {
-            Button { store.playPlaylist(playlistID, startingAt: track.id) } label: {
+            SwipeSafeButton { store.playPlaylist(playlistID, startingAt: track.id) } label: {
                 HStack(spacing: 12) {
                     CoverArt(track: track, repository: store.repository).frame(width: 42, height: 42)
                     VStack(alignment: .leading, spacing: 4) {
@@ -378,7 +381,7 @@ struct PlaylistDetailView: View {
                     Spacer(minLength: 0)
                     if !typeSize.isAccessibilitySize { Text(playbackTime(track.duration)).font(.caption.monospacedDigit()).foregroundStyle(.secondary) }
                 }.contentShape(Rectangle())
-            }.buttonStyle(.plain).accessibilityLabel(String(localized: "歌单播放 \(track.title)"))
+            }.buttonStyle(.plain).protectLibraryAction().accessibilityLabel(String(localized: "歌单播放 \(track.title)"))
             Menu {
                 if let index = tracks.firstIndex(where: { $0.id == track.id }) {
                     Button(String(localized: "上移"), systemImage: "arrow.up") { move(index, to: index - 1) }.disabled(index == 0)
@@ -388,7 +391,7 @@ struct PlaylistDetailView: View {
                 Button(String(localized: "稍后播放")) { store.appendToQueue([track]) }
                 Button(String(localized: "从歌单移除"), systemImage: "minus.circle") { perform { try await store.removeFromPlaylist(playlistID, trackIDs: [track.id]) } }
             } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44) }
-            .menuStyle(.borderlessButton).fixedSize().accessibilityLabel(String(localized: "歌单歌曲操作 \(track.title)"))
+            .menuStyle(.borderlessButton).protectLibraryAction().fixedSize().accessibilityLabel(String(localized: "歌单歌曲操作 \(track.title)"))
         }.frame(minHeight: 44).padding(.vertical, 4).listRowBackground(Color.clear).listRowSeparatorTint(Sunset.stroke(scheme))
     }
     private func move(_ index: Int, to destination: Int) { perform { try await store.movePlaylistTracks(playlistID, from: IndexSet(integer: index), to: destination) } }
@@ -417,7 +420,7 @@ struct PlaylistTrackPicker: View {
                     .textFieldStyle(.plain).autocorrectionDisabled().submitLabel(.search)
                     .accessibilityLabel(String(localized: "搜索音乐库"))
                 if !query.isEmpty {
-                    Button { query = "" } label: { Image(systemName: "xmark.circle.fill").frame(width: 44, height: 44) }
+                    SwipeSafeButton { query = "" } label: { Image(systemName: "xmark.circle.fill").frame(width: 44, height: 44) }
                         .buttonStyle(.plain).foregroundStyle(Sunset.secondary(scheme)).accessibilityLabel(String(localized: "清除搜索"))
                 }
             }
@@ -438,7 +441,7 @@ struct PlaylistTrackPicker: View {
                         .font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 ForEach(filtered) { track in
-                    Button {
+                    SwipeSafeButton {
                         if selected.contains(track.id) { selected.remove(track.id) } else { selected.insert(track.id) }
                     } label: {
                         HStack(alignment: .center, spacing: 12) {
@@ -453,12 +456,13 @@ struct PlaylistTrackPicker: View {
                             Spacer(minLength: 0)
                         }.frame(minHeight: 48).contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain).disabled(existing.contains(track.id) || store.isBusy)
+                    .buttonStyle(.plain).protectLibraryAction().disabled(existing.contains(track.id) || store.isBusy)
                     .accessibilityLabel(String(localized: "添加歌曲 \(track.title)"))
                     .accessibilityValue(existing.contains(track.id) ? String(localized: "已添加到歌单") : selected.contains(track.id) ? String(localized: "已选择") : String(localized: "未选择"))
                     .listRowBackground(Color.clear)
                 }
             }
+            .guardActionsWhileScrolling()
             .listStyle(.plain)
             .scrollDismissesKeyboard(.interactively)
             .scrollContentBackground(.hidden)

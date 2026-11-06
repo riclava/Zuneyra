@@ -91,3 +91,16 @@ iOS 与 macOS 的 1.0（1）均已通过 Xcode App Store Connect 分发上传。
 - macOS 1.0（1）：Waiting for Review；提交记录 `afe9c6fd-3747-4c7f-bf1e-0bbcad588bec`。
 
 后台 App Review 列表已确认两个平台均等待审核，草稿数为 0。沿用现有审核通过后自动发布设置。截图凭证：`/tmp/zuneyra-both-submitted.jpg`。
+
+## 2026-11-06 替换构建并重新提审
+
+按用户要求保留 iOS、macOS 的 1.0 版本及全部既有商店资料，撤回旧审核、解除 build 1 关联，上传包含播放器布局和滑动防误触修复的 build 2。并未删除商店版本或历史构建。
+
+两个平台均已关联 1.0（2）、完成加密合规回答并正式重新提交，App Review 页面确认均为 Waiting for Review，草稿数为 0。
+
+- iOS 提交记录：`ca446dfc-301d-4187-a314-b28d72454882`。
+- macOS 提交记录：`f073d1ad-f16b-47b6-ac11-a98177bf6c71`。
+- 归档：`/tmp/zuneyra-submit-build2/ios-final.xcarchive`、`/tmp/zuneyra-submit-build2/mac-final.xcarchive`。Xcode 全局归档目录配置导致归档搬移失败，因此以本次签名安装产物及匹配 UUID 的 dSYM 整理归档；两个平台的 App Store Connect 导出上传均成功。
+- 上传日志：`/tmp/zuneyra-build2-ios-upload.log`、`/tmp/zuneyra-build2-mac-upload.log`，均为 `Upload succeeded` / `EXPORT SUCCEEDED`。
+- 凭证：`/tmp/zuneyra-build2-both-submitted.png`。
+- 发布设置沿用审核通过后自动发布；源码与 build 号修改尚未提交 Git。

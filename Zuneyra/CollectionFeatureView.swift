@@ -27,7 +27,7 @@ struct CollectionFeatureView: View {
                         Text(track.albumArtist + " · " + summary)
                             .font(.caption).foregroundStyle(Sunset.secondary(scheme)).lineLimit(1)
                         HStack(spacing: 8) {
-                            Button(action: play) {
+                            SwipeSafeButton(action: play) {
                                 Image(systemName: "play.fill").frame(width: 44, height: 44)
                                     .foregroundStyle(.white)
                                     .background(Sunset.accent(scheme), in: RoundedRectangle(cornerRadius: 8))
@@ -91,12 +91,12 @@ struct CollectionFeatureView: View {
         }
     }
     private var playButton: some View {
-        Button(action: play) {
+        SwipeSafeButton(action: play) {
             Label(isCurrent ? (isPlaying ? String(localized: "打开播放器") : String(localized: "继续聆听")) : String(localized: "播放专辑"), systemImage: "play.fill")
         }.buttonStyle(StudioButtonStyle(prominent: true)).protectLibraryAction().disabled(disabled)
     }
     private var browseButton: some View {
-        Button(action: browse) {
+        SwipeSafeButton(action: browse) {
             HStack(spacing: 8) { Text(String(localized: "查看专辑")); Image(systemName: "arrow.up.right").font(.caption) }
                 .font(.subheadline).frame(minHeight: 44)
         }.buttonStyle(.plain).protectLibraryAction().foregroundStyle(Sunset.secondary(scheme))

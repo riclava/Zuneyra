@@ -211,7 +211,9 @@ struct ContentView: View {
     private var libraryPageContents: some View {
         VStack(alignment: .leading, spacing: 24) {
             if renderedSection == .playlists {
-                PlaylistLibraryView(query: searchTerm)
+                PlaylistLibraryView(query: searchTerm) { id in
+                    playlistNavigation.setPath(playlistNavigation.path + [id])
+                }
             } else {
                 libraryHeader
                 libraryContent
@@ -275,7 +277,7 @@ struct ContentView: View {
                 .padding(.horizontal, 22).padding(.bottom, 18)
             VStack(spacing: 4) {
                 ForEach(LibrarySection.allCases) { item in
-                    Button { switchSection(item) } label: {
+                    SwipeSafeButton { switchSection(item) } label: {
                         HStack(spacing: 10) {
                             Image(systemName: item.icon).font(.system(size: 14)).frame(width: 20)
                             Text(item.title).font(.system(size: 14, weight: section == item ? .medium : .regular))
@@ -324,9 +326,9 @@ struct ContentView: View {
             Text(String(localized: "你的私人音乐库")).font(.system(.subheadline, design: .serif)).foregroundStyle(Sunset.secondary(scheme))
             #endif
             Spacer(minLength: 0)
-            Button { showingQueue = true } label: { Image(systemName: "list.bullet") }
+            SwipeSafeButton { showingQueue = true } label: { Image(systemName: "list.bullet") }
                 .buttonStyle(StudioIconButtonStyle()).protectLibraryAction().accessibilityLabel(String(localized: "播放队列")).help(String(localized: "播放队列"))
-            Button { managementTab = 0; showingManagement = true } label: { Image(systemName: "slider.horizontal.3") }
+            SwipeSafeButton { managementTab = 0; showingManagement = true } label: { Image(systemName: "slider.horizontal.3") }
                 .buttonStyle(StudioIconButtonStyle()).protectLibraryAction().accessibilityLabel(String(localized: "音乐库管理")).help(String(localized: "音乐库管理"))
             #if os(iOS)
             Menu {
@@ -335,7 +337,7 @@ struct ContentView: View {
             } label: { Image(systemName: "plus").frame(width: 44, height: 44) }
                 .menuStyle(.borderlessButton).protectLibraryAction().accessibilityLabel(String(localized: "导入音乐")).disabled(store.isBusy)
             #else
-            Button { importing = true } label: { Label(String(localized: "添加音乐"), systemImage: "plus") }
+            SwipeSafeButton { importing = true } label: { Label(String(localized: "添加音乐"), systemImage: "plus") }
                 .buttonStyle(StudioButtonStyle()).protectLibraryAction().disabled(store.isBusy).padding(.leading, 8)
                 .keyboardShortcut("o", modifiers: .command).accessibilityLabel(String(localized: "导入音乐"))
             #endif
@@ -401,7 +403,7 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity)
                 .accessibilityLabel(section == .playlists ? String(localized: "搜索歌单") : selectedAlbum == nil ? String(localized: "搜索音乐库") : String(localized: "搜索此专辑"))
             if !query.isEmpty {
-                Button { query = "" } label: {
+                SwipeSafeButton { query = "" } label: {
                     Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary).frame(width: 44, height: 44)
                 }.buttonStyle(.plain).protectLibraryAction().accessibilityLabel(String(localized: "清除搜索"))
             }
@@ -423,7 +425,7 @@ struct ContentView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 22) {
                     ForEach(LibrarySection.allCases) { item in
-                        Button { switchSection(item) } label: {
+                        SwipeSafeButton { switchSection(item) } label: {
                             Text(item == .favorites ? String(localized: "收藏分类", defaultValue: "收藏", comment: "Compact navigation tab for the favorites collection, not the Favorite action") : item.title)
                                 .font(.subheadline.weight(section == item ? .semibold : .medium))
                                 .fixedSize().frame(minHeight: 44)
@@ -459,7 +461,7 @@ struct ContentView: View {
         HStack(spacing: 8) {
             Image(systemName: "checkmark.circle.fill").accessibilityHidden(true)
             Text(notice).font(.footnote).frame(maxWidth: .infinity, alignment: .leading)
-            Button { store.playlistNotice = nil } label: { Image(systemName: "xmark").frame(width: 44, height: 44) }
+            SwipeSafeButton { store.playlistNotice = nil } label: { Image(systemName: "xmark").frame(width: 44, height: 44) }
                 .buttonStyle(.plain).protectLibraryAction().accessibilityLabel(String(localized: "关闭歌单提示"))
         }.foregroundStyle(Sunset.accent(scheme)).padding(.leading, 20).padding(.trailing, 8)
     }
@@ -499,7 +501,7 @@ struct ContentView: View {
     private var libraryHeader: some View {
         VStack(alignment: .leading, spacing: 20) {
             if selectedAlbum != nil {
-                Button { navigateBack() } label: {
+                SwipeSafeButton { navigateBack() } label: {
                     Label(String(localized: "所有专辑"), systemImage: "chevron.left").font(.subheadline.weight(.medium)).frame(minHeight: 44)
                 }.buttonStyle(.plain).protectLibraryAction().foregroundStyle(Sunset.accent(scheme))
             }
@@ -596,7 +598,7 @@ struct ContentView: View {
         } else if store.tracks.isEmpty {
             VStack(spacing: 0) {
                 StudioEmptyState(symbol: "opticaldisc", title: String(localized: "为喜欢的音乐，留一个位置"), detail: String(localized: "从一首歌、一张专辑开始。导入你的音乐，慢慢收藏，随时聆听。"))
-                Button { importing = true } label: { Label(String(localized: "导入音乐"), systemImage: "plus") }
+                SwipeSafeButton { importing = true } label: { Label(String(localized: "导入音乐"), systemImage: "plus") }
                     .buttonStyle(StudioButtonStyle(prominent: true)).protectLibraryAction().disabled(store.isBusy)
                 Text("FLAC / ALAC / MP3 / AAC / WAV / AIFF")
                     .font(.caption2.monospaced()).foregroundStyle(Sunset.secondary(scheme)).padding(.top, 24)
@@ -656,7 +658,7 @@ struct ContentView: View {
             }.padding(.top, 8)
             LazyVGrid(columns: gridColumns, alignment: .leading, spacing: 30) {
                 ForEach(albums, id: \.first!.albumKey) { album in
-                    Button { openAlbum(album[0].albumKey) } label: {
+                    SwipeSafeButton { openAlbum(album[0].albumKey) } label: {
                         VStack(alignment: .leading, spacing: 10) {
                             CoverArt(track: album[0], repository: store.repository)
                                 .shadow(color: .black.opacity(scheme == .dark ? 0.2 : 0.10), radius: 8, x: 0, y: 5)
@@ -694,6 +696,7 @@ struct ContentView: View {
                         }
                     }.padding(.vertical, 6)
                 }
+                .disclosureGroupStyle(SwipeSafeDisclosureStyle())
                 Divider().opacity(0.5)
             }
         }
@@ -750,9 +753,9 @@ struct ContentView: View {
     private var playButtons: some View {
         let layout = dynamicTypeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10)) : AnyLayout(HStackLayout(spacing: 10))
         return layout {
-            Button { playAll(filtered) } label: { Label(String(localized: "播放全部"), systemImage: "play.fill").frame(minHeight: 28) }
+            SwipeSafeButton { playAll(filtered) } label: { Label(String(localized: "播放全部"), systemImage: "play.fill").frame(minHeight: 28) }
                 .buttonStyle(StudioButtonStyle(prominent: true)).protectLibraryAction()
-            Button { playAll(filtered, shuffled: true) } label: { Label(String(localized: "随机播放"), systemImage: "shuffle").frame(minHeight: 28) }
+            SwipeSafeButton { playAll(filtered, shuffled: true) } label: { Label(String(localized: "随机播放"), systemImage: "shuffle").frame(minHeight: 28) }
                 .buttonStyle(StudioButtonStyle()).protectLibraryAction()
         }.font(.subheadline.weight(.semibold)).disabled(store.isManaging)
     }
@@ -801,7 +804,7 @@ struct ContentView: View {
             LazyVStack(spacing: 0) {
                 ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
                     HStack(spacing: 8) {
-                        Button {
+                        SwipeSafeButton {
                             if selecting && allowSelection {
                                 if selectedIDs.contains(track.id) { selectedIDs.remove(track.id) } else { selectedIDs.insert(track.id) }
                             } else { searchFocused = false; store.play(track, context: tracks) }

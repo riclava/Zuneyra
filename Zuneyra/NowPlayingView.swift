@@ -103,22 +103,23 @@ struct NowPlayingView: View {
                 }
                 .padding(.horizontal, 24).padding(.vertical, 16)
             }
+            .guardActionsWhileScrolling()
         }
     }
 
     private func playerControls(_ track: Track, compact: Bool, spacing: CGFloat) -> some View {
         VStack(spacing: spacing) {
             Rectangle().fill(Sunset.stroke(scheme)).frame(height: 1)
-            utilityLinks
+            utilityLinks.protectLibraryAction()
             PlaybackTimeline(track: track).id(track.id)
-            PlayerTransportControls(compact: compact)
+            PlayerTransportControls(compact: compact, openQueue: { navigation.setPath(navigation.path + [1]) }).protectLibraryAction()
         }
         .fixedSize(horizontal: false, vertical: true)
     }
 
     private func artwork(_ track: Track) -> some View {
         ZStack {
-            Button { showingLyrics = true } label: {
+            SwipeSafeButton { showingLyrics = true } label: {
                 CoverArt(track: track, repository: store.repository, cornerRadius: 12)
                     .overlay(alignment: .bottomTrailing) {
                         Image(systemName: "quote.bubble")
@@ -129,6 +130,7 @@ struct NowPlayingView: View {
                     }
             }
             .buttonStyle(ArtworkModeButtonStyle())
+            .protectLibraryAction()
             .accessibilityLabel(String(localized: "显示歌词"))
             .accessibilityHint(String(localized: "点击封面切换到歌词模式"))
             .opacity(showingLyrics ? 0 : 1)
@@ -145,7 +147,7 @@ struct NowPlayingView: View {
 
     private var utilityLinks: some View {
         HStack(spacing: 0) {
-            Button { showingTrackInfo = true } label: {
+            SwipeSafeButton { showingTrackInfo = true } label: {
                 Image(systemName: "info.circle").frame(width: 44, height: 44)
             }
             .buttonStyle(.plain)
@@ -158,7 +160,7 @@ struct NowPlayingView: View {
                     #endif
             }
             Spacer(minLength: 0)
-            Button {
+            SwipeSafeButton {
                 trackToAddToPlaylist = store.current
             } label: {
                 Image(systemName: "text.badge.plus").frame(width: 44, height: 44)
@@ -170,7 +172,7 @@ struct NowPlayingView: View {
             Spacer(minLength: 0)
             audioOutput
             Spacer(minLength: 0)
-            Button { showingAudioSettings = true } label: {
+            SwipeSafeButton { showingAudioSettings = true } label: {
                 Image(systemName: "slider.horizontal.3")
                     .frame(width: 44, height: 44)
             }
@@ -185,7 +187,7 @@ struct NowPlayingView: View {
             }
             Spacer(minLength: 0)
             if let track = store.current {
-                Button { store.toggleFavorite(track) } label: {
+                SwipeSafeButton { store.toggleFavorite(track) } label: {
                     Image(systemName: track.favorite ? "heart.fill" : "heart")
                         .font(.body)
                         .frame(width: 44, height: 44)
@@ -207,7 +209,7 @@ struct NowPlayingView: View {
             HStack {
                 Text(String(localized: "歌曲信息")).font(.headline)
                 Spacer()
-                Button { showingTrackInfo = false } label: {
+                SwipeSafeButton { showingTrackInfo = false } label: {
                     Image(systemName: "xmark").frame(width: 44, height: 44)
                 }
                 .buttonStyle(.plain)
@@ -241,7 +243,7 @@ struct NowPlayingView: View {
                     Text("ReplayGain").font(.caption).foregroundStyle(Sunset.secondary(scheme))
                 }
                 Spacer()
-                Button { showingAudioSettings = false } label: {
+                SwipeSafeButton { showingAudioSettings = false } label: {
                     Image(systemName: "xmark").frame(width: 44, height: 44)
                 }
                 .buttonStyle(.plain)
@@ -252,7 +254,7 @@ struct NowPlayingView: View {
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 2) {
                 ForEach(ReplayGainMode.allCases) { mode in
-                    Button { store.setReplayGainMode(mode) } label: {
+                    SwipeSafeButton { store.setReplayGainMode(mode) } label: {
                         Text(mode.shortTitle)
                             .font(.subheadline.weight(.medium))
                             .lineLimit(1)
@@ -318,10 +320,11 @@ struct PlayerTransportControls: View {
     @Environment(PlayerStore.self) private var store
     @Environment(\.colorScheme) private var scheme
     var compact = false
+    let openQueue: () -> Void
 
     var body: some View {
         HStack(spacing: 0) {
-            Button { store.cyclePlaybackMode() } label: {
+            SwipeSafeButton { store.cyclePlaybackMode() } label: {
                 Image(systemName: store.queueState.playbackMode.symbol)
                     .font(.title3)
                     .frame(width: 44, height: 44)
@@ -337,11 +340,11 @@ struct PlayerTransportControls: View {
             .accessibilityHint(String(localized: "依次切换顺序播放、列表循环、单曲循环和随机播放"))
             .help(store.queueState.playbackMode.title)
             Spacer(minLength: 0)
-            Button { store.previous() } label: {
+            SwipeSafeButton { store.previous() } label: {
                 Image(systemName: "backward.end.fill").font(.title2).frame(width: 44, height: 44)
             }.accessibilityLabel(String(localized: "上一首"))
             Spacer(minLength: 0)
-            Button { store.toggle() } label: {
+            SwipeSafeButton { store.toggle() } label: {
                 Image(systemName: store.isPlaying ? "pause.fill" : "play.fill")
                     .font(.title2.weight(.semibold))
                     .frame(width: compact ? 56 : 72, height: compact ? 56 : 72)
@@ -349,11 +352,11 @@ struct PlayerTransportControls: View {
                     .foregroundStyle(Sunset.paper)
             }.accessibilityLabel(store.isPlaying ? String(localized: "暂停") : String(localized: "播放"))
             Spacer(minLength: 0)
-            Button { store.next() } label: {
+            SwipeSafeButton { store.next() } label: {
                 Image(systemName: "forward.end.fill").font(.title2).frame(width: 44, height: 44)
             }.accessibilityLabel(String(localized: "下一首"))
             Spacer(minLength: 0)
-            NavigationLink(value: 1) {
+            SwipeSafeButton(action: openQueue) {
                 Image(systemName: "music.note.list").font(.title3).frame(width: 44, height: 44)
             }
             .accessibilityLabel(String(localized: "播放队列"))

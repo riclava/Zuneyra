@@ -7,14 +7,14 @@ struct PlaybackModesView: View {
     var body: some View {
         let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))
         layout {
-            Button { store.toggleShuffle() } label: {
+            SwipeSafeButton { store.toggleShuffle() } label: {
                 Label(store.queueState.shuffle ? String(localized: "随机播放") : String(localized: "顺序播放"), systemImage: store.queueState.shuffle ? "shuffle" : "arrow.right")
             }
             .buttonStyle(StudioButtonStyle(prominent: store.queueState.shuffle))
             .accessibilityValue(store.queueState.shuffle ? String(localized: "已开启随机播放") : String(localized: "按队列顺序播放"))
             .accessibilityHint(String(localized: "切换顺序播放和随机播放"))
             .accessibilityAddTraits(store.queueState.shuffle ? .isSelected : [])
-            Button { store.cycleRepeatMode() } label: {
+            SwipeSafeButton { store.cycleRepeatMode() } label: {
                 Label(store.queueState.repeatMode.title, systemImage: store.queueState.repeatMode.symbol)
             }
             .buttonStyle(StudioButtonStyle(prominent: store.queueState.repeatMode != .off))
@@ -88,6 +88,7 @@ struct PlaybackQueueView: View {
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
+                .guardActionsWhileScrolling()
                 .padding(.horizontal, embedded ? 16 : 0)
                 #if os(iOS)
                 .environment(\.editMode, .constant(sorting ? .active : .inactive))
@@ -154,7 +155,7 @@ struct PlaybackQueueView: View {
         Group {
             if let track = store.track(for: entry) {
                 HStack(spacing: 12) {
-                    Button {
+                    SwipeSafeButton {
                         if current { store.toggle() } else { store.playQueueEntry(entry.id) }
                     } label: {
                         HStack(spacing: 12) {
@@ -173,6 +174,7 @@ struct PlaybackQueueView: View {
                         }.contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .protectLibraryAction()
                     .accessibilityLabel(current ? (store.isPlaying ? String(localized: "暂停 ") : String(localized: "继续播放 ")) + track.title : String(localized: "播放 ") + track.title)
                     Menu {
                         if pending, let index = store.queueState.upcoming.firstIndex(of: entry.id) {
@@ -185,6 +187,7 @@ struct PlaybackQueueView: View {
                         Button(String(localized: "移出队列"), systemImage: "minus.circle") { store.removeQueueEntry(entry.id) }
                     } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44) }
                     .menuStyle(.borderlessButton)
+                    .protectLibraryAction()
                     .fixedSize()
                     .accessibilityLabel(String(localized: "队列操作 \(track.title)"))
                 }.frame(minHeight: 44).padding(.vertical, 4)

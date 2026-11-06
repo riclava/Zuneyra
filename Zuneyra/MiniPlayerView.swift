@@ -17,7 +17,7 @@ struct MiniPlayerView: View {
                     .frame(width: proxy.size.width * min(1, max(0, store.position / max(track.duration, 0.01))))
             }.frame(height: 2).accessibilityHidden(true)
             HStack(spacing: 16) {
-                Button { openPlayer() } label: {
+                SwipeSafeButton { openPlayer() } label: {
                     HStack(spacing: 14) {
                         CoverArt(track: track, repository: store.repository, cornerRadius: 4)
                             .frame(width: 50, height: 50).accessibilityHidden(true)
@@ -27,16 +27,16 @@ struct MiniPlayerView: View {
                             Text(track.artist).font(.caption).foregroundStyle(Sunset.paper.opacity(0.62)).lineLimit(1)
                         }
                     }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
-                }.buttonStyle(.plain).accessibilityLabel(String(localized: "打开正在播放：\(track.title)"))
+                }.buttonStyle(.plain).protectLibraryAction().accessibilityLabel(String(localized: "打开正在播放：\(track.title)"))
                     .accessibilityHint(String(localized: "打开完整播放器与播放队列"))
 
                 HStack(spacing: 8) {
                     if expanded {
-                    Button { store.previous() } label: {
+                    SwipeSafeButton { store.previous() } label: {
                         Image(systemName: "backward.end.fill").frame(width: 40, height: 44)
                     }.accessibilityLabel(String(localized: "上一首"))
                     }
-                    Button { store.toggle() } label: {
+                    SwipeSafeButton { store.toggle() } label: {
                         Image(systemName: store.isPlaying ? "pause.fill" : "play.fill")
                             .font(.system(size: 15, weight: .semibold))
                             .frame(width: 46, height: 46)
@@ -44,14 +44,14 @@ struct MiniPlayerView: View {
                             .foregroundStyle(Sunset.paper)
                     }.accessibilityLabel(store.isPlaying ? String(localized: "暂停") : String(localized: "播放"))
                     if !dynamicTypeSize.isAccessibilitySize {
-                        Button { store.next() } label: {
+                        SwipeSafeButton { store.next() } label: {
                             Image(systemName: "forward.end.fill").frame(width: 44, height: 44)
                         }.accessibilityLabel(String(localized: "下一首"))
                     }
                 }.disabled(store.isManaging)
                 if expanded {
                 PlaybackTimeline(track: track).id(track.id).frame(width: 180).padding(.horizontal, 12)
-                Button { openQueue() } label: {
+                SwipeSafeButton { openQueue() } label: {
                     Image(systemName: "list.bullet").frame(width: 44, height: 44)
                 }.accessibilityLabel(String(localized: "播放队列"))
                 }

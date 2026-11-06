@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
 
 /// Navigation belongs to the paper surface instead of a separate system toolbar.
 struct CollectionSheetHeader: View {
@@ -118,6 +121,108 @@ private struct EdgeNavigationModifier: ViewModifier {
     }
 }
 
+#if os(iOS)
+struct SwipeSafeButton<Label: View>: View {
+    let action: () -> Void
+    @ViewBuilder var label: () -> Label
+    @Environment(\.libraryActionsSuppressed) private var suppressed
+
+    var body: some View {
+        Button {
+            if !TouchMovementRecognizer.cancelled && !suppressed { action() }
+        } label: { label() }
+        .background(TouchMovementObserver().allowsHitTesting(false))
+        .accessibilityAction { action() }
+    }
+}
+
+/// Observe touches simultaneously without preventing or delaying other gestures.
+/// Cancellation survives page removal and resets on the next physical touch.
+private final class TouchMovementRecognizer: UIGestureRecognizer, UIGestureRecognizerDelegate {
+    override init(target: Any?, action: Selector?) {
+        super.init(target: target, action: action)
+        delegate = self
+    }
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool { true }
+    static var cancelled = false
+    private var origins: [UITouch: CGPoint] = [:]
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        if origins.isEmpty { Self.cancelled = false }
+        for touch in touches { origins[touch] = touch.location(in: view) }
+        state = state == .possible ? .began : .changed
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
+        for touch in touches {
+            guard let origin = origins[touch] else { continue }
+            let point = touch.location(in: view)
+            if hypot(point.x - origin.x, point.y - origin.y) >= 8 {
+                Self.cancelled = true
+                state = .changed
+                return
+            }
+        }
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
+        touchesMoved(touches, with: event)
+        for touch in touches { origins.removeValue(forKey: touch) }
+        if origins.isEmpty { state = .ended }
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
+        Self.cancelled = true
+        origins.removeAll()
+        state = .cancelled
+    }
+
+    override func reset() { super.reset(); origins.removeAll() }
+    override func canPrevent(_ preventedGestureRecognizer: UIGestureRecognizer) -> Bool { false }
+    override func canBePrevented(by preventingGestureRecognizer: UIGestureRecognizer) -> Bool { false }
+}
+
+private struct TouchMovementObserver: UIViewRepresentable {
+    final class ObserverView: UIView {
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            guard let window, !(window.gestureRecognizers ?? []).contains(where: { $0 is TouchMovementRecognizer }) else { return }
+            let observer = TouchMovementRecognizer(target: nil, action: nil)
+            observer.cancelsTouchesInView = false
+            observer.delaysTouchesBegan = false
+            observer.delaysTouchesEnded = false
+            window.addGestureRecognizer(observer)
+        }
+    }
+    func makeUIView(context: Context) -> ObserverView { ObserverView() }
+    func updateUIView(_ uiView: ObserverView, context: Context) { }
+}
+#else
+typealias SwipeSafeButton<Label: View> = Button<Label>
+#endif
+
+/// Keep the native disclosure's state, but route expansion through the same
+/// touch cancellation as library rows instead of its built-in tap recognizer.
+struct SwipeSafeDisclosureStyle: DisclosureGroupStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SwipeSafeButton { configuration.isExpanded.toggle() } label: {
+                HStack {
+                    configuration.label
+                    Spacer(minLength: 8)
+                    Image(systemName: configuration.isExpanded ? "chevron.down" : "chevron.right")
+                        .font(.caption.weight(.semibold))
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityValue(configuration.isExpanded ? String(localized: "已展开") : String(localized: "已收起"))
+            .protectLibraryAction()
+            if configuration.isExpanded { configuration.content }
+        }
+    }
+}
+
 extension View {
     /// Cancel row actions once a drag starts, and keep them suppressed through scroll deceleration.
     func guardActionsWhileScrolling() -> some View {
@@ -192,8 +297,8 @@ private struct ScrollActionGuard: ViewModifier {
         guard suppressActions, !dragging, !scrolling else { return }
         releaseTask?.cancel()
         releaseTask = Task { @MainActor in
-            // Do not re-enable a pressed row during the same touch-up event.
-            try? await Task.sleep(for: .milliseconds(150))
+            // Let touch-up finish without imposing a delay on the next tap.
+            await Task.yield()
             guard !Task.isCancelled, !dragging, !scrolling else { return }
             suppressActions = false
             releaseTask = nil
@@ -221,13 +326,12 @@ private struct LibraryActionProtection: ViewModifier {
     @Environment(\.libraryActionsSuppressed) private var suppressed
     func body(content: Content) -> some View {
         content
-            // Preserve the control's normal colors; suppression is only a touch-routing rule.
+            // Do not change isEnabled: that dims labels during a drag.
+            // SwipeSafeButton cancels an in-flight action in its action closure.
             .allowsHitTesting(!suppressed)
             .overlay {
                 if suppressed {
-                    Color.clear
-                        .contentShape(Rectangle())
-                        .onTapGesture { }
+                    Color.clear.contentShape(Rectangle()).onTapGesture { }
                         .accessibilityHidden(true)
                 }
             }
