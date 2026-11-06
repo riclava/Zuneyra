@@ -74,27 +74,46 @@ struct NowPlayingView: View {
     private func player(_ track: Track, horizontal: Bool, compact: Bool) -> some View {
         GeometryReader { geometry in
             let spacing: CGFloat = compact ? 12 : 20
-            let side = typeSize.isAccessibilitySize ? 120 : min(320,
-                min(geometry.size.width * (horizontal ? 0.40 : 0.78), geometry.size.height * (horizontal ? 0.72 : 0.42)))
-            let layout = horizontal ? AnyLayout(HStackLayout(alignment: .center, spacing: 28)) : AnyLayout(VStackLayout(spacing: spacing))
+            let side = typeSize.isAccessibilitySize ? 120 : min(horizontal ? 320 : 360,
+                min(horizontal ? geometry.size.width * 0.40 : max(100, geometry.size.width - 48),
+                    geometry.size.height * (horizontal ? 0.72 : 0.50)))
             ScrollView {
-                layout {
-                    artwork(track)
-                        .frame(width: max(100, side), height: max(100, side))
-                    VStack(alignment: .leading, spacing: spacing) {
-                        trackDetails(track, compact: false)
-                        PlaybackTimeline(track: track).id(track.id)
-                        PlayerTransportControls(compact: compact)
-                        Rectangle().fill(Sunset.stroke(scheme)).frame(height: 1)
-                        utilityLinks
+                Group {
+                    if horizontal {
+                        HStack(alignment: .center, spacing: 28) {
+                            artwork(track).frame(width: max(100, side), height: max(100, side))
+                            VStack(alignment: .leading, spacing: spacing) {
+                                trackDetails(track, compact: false)
+                                playerControls(track, compact: compact, spacing: spacing)
+                            }.frame(maxWidth: 460)
+                        }
+                        .frame(maxWidth: 1000)
+                        .frame(maxWidth: .infinity, minHeight: max(0, geometry.size.height - 32))
+                    } else {
+                        VStack(spacing: spacing) {
+                            artwork(track).frame(width: max(100, side), height: max(100, side))
+                            trackDetails(track, compact: false)
+                            Spacer(minLength: 0)
+                            playerControls(track, compact: compact, spacing: spacing)
+                        }
+                        .frame(maxWidth: 460)
+                        .frame(minHeight: max(0, geometry.size.height - 32))
+                        .frame(maxWidth: .infinity)
                     }
-                    .frame(maxWidth: 460)
                 }
                 .padding(.horizontal, 24).padding(.vertical, 16)
-                .frame(maxWidth: horizontal ? 1000 : 460)
-                .frame(maxWidth: .infinity, minHeight: geometry.size.height, alignment: .center)
             }
         }
+    }
+
+    private func playerControls(_ track: Track, compact: Bool, spacing: CGFloat) -> some View {
+        VStack(spacing: spacing) {
+            Rectangle().fill(Sunset.stroke(scheme)).frame(height: 1)
+            utilityLinks
+            PlaybackTimeline(track: track).id(track.id)
+            PlayerTransportControls(compact: compact)
+        }
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     private func artwork(_ track: Track) -> some View {
